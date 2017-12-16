@@ -18,8 +18,6 @@
 
 #include "Data/CityInfo.h"
 #include "Data/Constants.h"
-#include "Data/FileList.h"
-#include "Data/Grid.h"
 #include "Data/State.h"
 
 #include "building/storage.h"
@@ -27,6 +25,7 @@
 #include "core/file.h"
 #include "core/io.h"
 #include "core/random.h"
+#include "core/string.h"
 #include "empire/empire.h"
 #include "figure/enemy_army.h"
 #include "figure/figure.h"
@@ -39,9 +38,11 @@
 #include "game/time.h"
 #include "game/tutorial.h"
 #include "graphics/image.h"
+#include "map/aqueduct.h"
 #include "map/bookmark.h"
 #include "map/building.h"
 #include "map/desirability.h"
+#include "map/elevation.h"
 #include "map/figure.h"
 #include "map/grid.h"
 #include "map/image.h"
@@ -70,11 +71,9 @@
 static int mapFileExists(const char *scenarioName);
 static void initCustomScenario(const char *scenarioName);
 static void loadScenario(const char *scenarioName);
-static void readScenarioAndInitGraphics();
+static void readScenarioAndInitGraphics(const char *scenarioName);
 
 static void initGrids();
-static void initGridTerrain();
-static void initGridGraphicIds();
 
 void Scenario_initialize(const char *scenarioName)
 {
@@ -164,8 +163,7 @@ static void initCustomScenario(const char *scenarioName)
 static void loadScenario(const char *scenarioName)
 {
 	Data_CityInfo_Extra.ciid = 1;
-	strcpy(Data_FileList.selectedScenario, scenarioName);
-	readScenarioAndInitGraphics();
+	readScenarioAndInitGraphics(scenarioName);
 
 	Figure_createFishingPoints();
 	Figure_createHerds();
@@ -210,14 +208,17 @@ static void loadScenario(const char *scenarioName)
 	image_load_enemy(scenario_property_enemy());
 }
 
-static void readScenarioAndInitGraphics()
+static void readScenarioAndInitGraphics(const char *scenarioName)
 {
+    char filename[FILE_NAME_MAX];
+    strncpy(filename, scenarioName, FILE_NAME_MAX);
 	initGrids();
-	file_remove_extension(Data_FileList.selectedScenario);
-	file_append_extension(Data_FileList.selectedScenario, "map");
-	GameFile_loadScenario(Data_FileList.selectedScenario);
-	file_remove_extension(Data_FileList.selectedScenario);
+	file_remove_extension(filename);
+	file_append_extension(filename, "map");
+	GameFile_loadScenario(filename);
+	file_remove_extension(filename);
 
+	scenario_set_name(string_from_ascii(filename));
 	scenario_map_init();
 
 	CityView_calculateLookup();
@@ -245,50 +246,16 @@ static void initGrids()
 	map_image_clear();
 	map_building_clear();
 	map_terrain_clear();
-	map_grid_clear_u8(Data_Grid_aqueducts);
+	map_aqueduct_clear();
 	map_figure_clear();
 	map_property_clear();
 	map_grid_clear_u8(Data_Grid_spriteOffsets);
 	map_random_clear();
 	map_desirability_clear();
-	map_grid_clear_u8(Data_Grid_elevation);
+	map_elevation_clear();
 	map_soldier_strength_clear();
 	map_road_network_clear();
 
 	TerrainGraphicsContext_init();
-	initGridTerrain();
 	map_random_init();
-	initGridGraphicIds();
-}
-
-static void initGridTerrain()
-{
-	int gridOffset = 0;
-	for (int y = 0; y < Data_State.map.height; y++) {
-		for (int x = 0; x < Data_State.map.width; x++, gridOffset++) {
-			if (x < (GRID_SIZE - Data_State.map.width) / 2 ||
-				x >= (GRID_SIZE - Data_State.map.width) / 2 + Data_State.map.width) {
-				Data_Grid_terrain[gridOffset] = Terrain_OutsideMap;
-			}
-			if (y < (GRID_SIZE - Data_State.map.height) / 2 ||
-				y >= (GRID_SIZE - Data_State.map.height) / 2 + Data_State.map.height) {
-				Data_Grid_terrain[gridOffset] = Terrain_OutsideMap;
-			}
-		}
-	}
-}
-
-static void initGridGraphicIds()
-{
-	int gridOffset = Data_State.map.gridStartOffset;
-	int graphicId = image_group(GROUP_TERRAIN_UGLY_GRASS);
-	for (int y = 0; y < Data_State.map.height; y++, gridOffset += Data_State.map.gridBorderSize) {
-		for (int x = 0; x < Data_State.map.width; x++, gridOffset++) {
-		    int random = map_random_get(gridOffset);
-			map_image_set(gridOffset, graphicId + (random & 7));
-			if (random & 1) {
-				map_property_set_alternate_terrain(gridOffset);
-			}
-		}
-	}
 }

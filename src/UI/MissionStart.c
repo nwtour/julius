@@ -8,11 +8,11 @@
 
 #include "../Data/CityInfo.h"
 #include "../Data/Constants.h"
-#include "../Data/FileList.h"
 #include "../Data/Screen.h"
 #include "../Data/State.h"
 
 #include "core/lang.h"
+#include "core/string.h"
 #include "game/tutorial.h"
 #include "scenario/criteria.h"
 #include "scenario/property.h"
@@ -188,7 +188,7 @@ void UI_MissionStart_Briefing_drawBackground()
 {
 	if (!Data_State.missionBriefingShown) {
 		Data_State.missionBriefingShown = 1;
-		Scenario_initialize(Data_FileList.selectedScenario);
+		Scenario_initialize(string_to_ascii(scenario_name()));
 		if (UI_Window_getId() == Window_City) {
 			return;
 		}

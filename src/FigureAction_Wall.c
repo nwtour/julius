@@ -3,8 +3,6 @@
 #include "Figure.h"
 #include "Terrain.h"
 
-#include "Data/Grid.h"
-
 #include "core/calc.h"
 #include "figure/enemy_army.h"
 #include "figure/properties.h"
@@ -13,6 +11,7 @@
 #include "map/figure.h"
 #include "map/grid.h"
 #include "map/routing_terrain.h"
+#include "map/terrain.h"
 #include "sound/effect.h"
 
 static int ballistaFiringOffsets[] = {
@@ -252,9 +251,9 @@ void FigureAction_towerSentry(figure *f)
 			}
 			break;
 	}
-	if (Data_Grid_terrain[f->gridOffset] & Terrain_Wall) {
+	if (map_terrain_is(f->gridOffset, TERRAIN_WALL)) {
 		f->currentHeight = 18;
-	} else if (Data_Grid_terrain[f->gridOffset] & Terrain_Gatehouse) {
+	} else if (map_terrain_is(f->gridOffset, TERRAIN_GATEHOUSE)) {
 		f->inBuildingWaitTicks = 24;
 	} else if (f->actionState != FigureActionState_174_TowerSentryGoingToTower) {
 		f->state = FigureState_Dead;

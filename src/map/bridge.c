@@ -5,6 +5,7 @@
 #include "map/grid.h"
 #include "map/property.h"
 #include "map/routing_terrain.h"
+#include "map/terrain.h"
 
 #include "Data/State.h"
 #include "../Terrain.h"
@@ -34,26 +35,25 @@ int map_bridge_calculate_length_direction(int x, int y, int is_ship_bridge, int 
     bridge.length = *length = 0;
     bridge.direction = *direction = 0;
 
-    int terrain = Data_Grid_terrain[grid_offset];
-    if (!(terrain & Terrain_Water)) {
+    if (!map_terrain_is(grid_offset, TERRAIN_WATER)) {
         return 0;
     }
-    if (terrain & Terrain_Road || terrain & Terrain_Building) {
+    if (map_terrain_is(grid_offset, TERRAIN_ROAD | TERRAIN_BUILDING)) {
         return 0;
     }
-    if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, Terrain_Water) != 3) {
+    if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, TERRAIN_WATER) != 3) {
         return 0;
     }
-    if (!(Data_Grid_terrain[map_grid_offset(x, y-1)] & Terrain_Water)) {
+    if (!map_terrain_is(map_grid_offset(x, y-1), TERRAIN_WATER)) {
         bridge.direction_grid_delta = map_grid_delta(0, 1);
         bridge.direction = DIR_4_BOTTOM;
-    } else if (!(Data_Grid_terrain[map_grid_offset(x+1, y)] & Terrain_Water)) {
+    } else if (!map_terrain_is(map_grid_offset(x+1, y), TERRAIN_WATER)) {
         bridge.direction_grid_delta = map_grid_delta(-1, 0);
         bridge.direction = DIR_6_LEFT;
-    } else if (!(Data_Grid_terrain[map_grid_offset(x, y+1)] & Terrain_Water)) {
+    } else if (!map_terrain_is(map_grid_offset(x, y+1), TERRAIN_WATER)) {
         bridge.direction_grid_delta = map_grid_delta(0, -1);
         bridge.direction = DIR_0_TOP;
-    } else if (!(Data_Grid_terrain[map_grid_offset(x-1, y)] & Terrain_Water)) {
+    } else if (!map_terrain_is(map_grid_offset(x-1, y), TERRAIN_WATER)) {
         bridge.direction_grid_delta = map_grid_delta(1, 0);
         bridge.direction = DIR_2_RIGHT;
     } else {
@@ -64,22 +64,22 @@ int map_bridge_calculate_length_direction(int x, int y, int is_ship_bridge, int 
     for (int i = 0; i < 40; i++) {
         grid_offset += bridge.direction_grid_delta;
         bridge.length++;
-        int nextTerrain = Data_Grid_terrain[grid_offset + bridge.direction_grid_delta];
-        if (nextTerrain & Terrain_Tree) {
+        int nextTerrain = map_terrain_get(grid_offset + bridge.direction_grid_delta);
+        if (nextTerrain & TERRAIN_TREE) {
             break;
         }
-        if (!(nextTerrain & Terrain_Water)) {
+        if (!(nextTerrain & TERRAIN_WATER)) {
             bridge.end_grid_offset = grid_offset;
-            if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, Terrain_Water) != 3) {
+            if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, TERRAIN_WATER) != 3) {
                 bridge.end_grid_offset = 0;
             }
             *length = bridge.length;
             return bridge.end_grid_offset;
         }
-        if (nextTerrain & Terrain_Road || nextTerrain & Terrain_Building) {
+        if (nextTerrain & TERRAIN_ROAD || nextTerrain & TERRAIN_BUILDING) {
             break;
         }
-        if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, Terrain_Water) != 4) {
+        if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, TERRAIN_WATER) != 4) {
             break;
         }
     }
@@ -111,7 +111,7 @@ int map_bridge_add(int x, int y, int is_ship_bridge)
 
     int grid_offset = map_grid_offset(x, y);
     for (int i = 0; i < bridge.length; i++) {
-        Data_Grid_terrain[grid_offset] |= Terrain_Road;
+        map_terrain_add(grid_offset, TERRAIN_ROAD);
         int value = 0;
         if (is_ship_bridge) {
             if (i == 1 || i == bridge.length - 2) {
@@ -188,7 +188,7 @@ int map_bridge_add(int x, int y, int is_ship_bridge)
 
 static int is_bridge(int grid_offset)
 {
-    return (Data_Grid_terrain[grid_offset] & Terrain_Water) && Data_Grid_spriteOffsets[grid_offset];
+    return map_terrain_is(grid_offset, TERRAIN_WATER) && Data_Grid_spriteOffsets[grid_offset];
 }
 
 static int get_y_bridge_tiles(int grid_offset)
@@ -229,8 +229,7 @@ static int get_x_bridge_tiles(int grid_offset)
 
 void map_bridge_remove(int grid_offset, int mark_deleted)
 {
-    if (!(Data_Grid_terrain[grid_offset] & Terrain_Water) ||
-            Data_Grid_spriteOffsets[grid_offset] <= 0) {
+    if (!is_bridge(grid_offset)) {
         return;
     }
 
@@ -239,8 +238,7 @@ void map_bridge_remove(int grid_offset, int mark_deleted)
 
     int offset_up = tiles_x > tiles_y ? map_grid_delta(1, 0) : map_grid_delta(0, 1);
     // find lower end of the bridge
-    while ((Data_Grid_terrain[grid_offset - offset_up] & Terrain_Water) &&
-            Data_Grid_spriteOffsets[grid_offset - offset_up]) {
+    while (is_bridge(grid_offset - offset_up)) {
         grid_offset -= offset_up;
     }
 
@@ -248,24 +246,22 @@ void map_bridge_remove(int grid_offset, int mark_deleted)
         map_property_mark_deleted(grid_offset);
     } else {
         Data_Grid_spriteOffsets[grid_offset] = 0;
-        Data_Grid_terrain[grid_offset] &= ~Terrain_Road;
+        map_terrain_remove(grid_offset, TERRAIN_ROAD);
     }
-    while ((Data_Grid_terrain[grid_offset + offset_up] & Terrain_Water) &&
-            Data_Grid_spriteOffsets[grid_offset + offset_up]) {
+    while (is_bridge(grid_offset + offset_up)) {
         grid_offset += offset_up;
         if (mark_deleted) {
             map_property_mark_deleted(grid_offset);
         } else {
             Data_Grid_spriteOffsets[grid_offset] = 0;
-            Data_Grid_terrain[grid_offset] &= ~Terrain_Road;
+            map_terrain_remove(grid_offset, TERRAIN_ROAD);
         }
     }
 }
 
 int map_bridge_count_figures(int grid_offset)
 {
-    if (!(Data_Grid_terrain[grid_offset] & Terrain_Water) ||
-        Data_Grid_spriteOffsets[grid_offset] <= 0) {
+    if (!is_bridge(grid_offset)) {
         return 0;
     }
     int tiles_x = get_x_bridge_tiles(grid_offset);
@@ -273,8 +269,7 @@ int map_bridge_count_figures(int grid_offset)
 
     int offset_up = tiles_x > tiles_y ? map_grid_delta(1, 0) : map_grid_delta(0, 1);
     // find lower end of the bridge
-    while ((Data_Grid_terrain[grid_offset - offset_up] & Terrain_Water) &&
-            Data_Grid_spriteOffsets[grid_offset - offset_up]) {
+    while (is_bridge(grid_offset - offset_up)) {
         grid_offset -= offset_up;
     }
 
@@ -283,8 +278,7 @@ int map_bridge_count_figures(int grid_offset)
         figures = 1;
     }
     map_property_clear_deleted(grid_offset);
-    while ((Data_Grid_terrain[grid_offset + offset_up] & Terrain_Water) &&
-            Data_Grid_spriteOffsets[grid_offset + offset_up]) {
+    while (is_bridge(grid_offset + offset_up)) {
         grid_offset += offset_up;
         map_property_clear_deleted(grid_offset);
         if (map_has_figure_at(grid_offset)) {
@@ -299,7 +293,7 @@ void map_bridge_update_after_rotate(int ccw)
     for (int y = 0; y < Data_State.map.height; y++) {
         for (int x = 0; x < Data_State.map.width; x++) {
             int grid_offset = map_grid_offset(x, y);
-            if ((Data_Grid_terrain[grid_offset] & Terrain_Water) && Data_Grid_spriteOffsets[grid_offset]) {
+            if (is_bridge(grid_offset)) {
                 int new_value;
                 switch (Data_Grid_spriteOffsets[grid_offset]) {
                     case 1: new_value = ccw ? 2 : 4; break;

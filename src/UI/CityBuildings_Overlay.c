@@ -8,6 +8,7 @@
 #include "map/image.h"
 #include "map/property.h"
 #include "map/random.h"
+#include "map/terrain.h"
 
 static void drawFootprintForWaterOverlay(int gridOffset, int xOffset, int yOffset);
 static void drawTopForWaterOverlay(int gridOffset, int xOffset, int yOffset);
@@ -97,18 +98,18 @@ void UI_CityBuildings_drawOverlayFootprints()
 		} else if (Data_State.currentOverlay == Overlay_Desirability) {
 			drawBuildingFootprintForDesirabilityOverlay(gridOffset, xGraphic, yGraphic);
 		} else if (map_property_is_draw_tile(gridOffset)) {
-			int terrain = Data_Grid_terrain[gridOffset];
+			int terrain = map_terrain_get(gridOffset);
 			if (Data_State.currentOverlay == Overlay_Water) {
 				drawFootprintForWaterOverlay(gridOffset, xGraphic, yGraphic);
 			} else if (Data_State.currentOverlay == Overlay_Native) {
 				drawFootprintForNativeOverlay(gridOffset, xGraphic, yGraphic);
-			} else if (terrain & (Terrain_Aqueduct | Terrain_Wall)) {
+			} else if (terrain & (TERRAIN_AQUEDUCT | TERRAIN_WALL)) {
 				// display grass
 				int graphicId = image_group(GROUP_TERRAIN_GRASS_1) + (map_random_get(gridOffset) & 7);
 				DRAWFOOT_SIZE1(graphicId, xGraphic, yGraphic);
-			} else if ((terrain & Terrain_Road) && !(terrain & Terrain_Building)) {
+			} else if ((terrain & TERRAIN_ROAD) && !(terrain & TERRAIN_BUILDING)) {
 				draw_foot_with_size(gridOffset, xGraphic, yGraphic);
-			} else if (terrain & Terrain_Building) {
+			} else if (terrain & TERRAIN_BUILDING) {
 				drawBuildingFootprintForOverlay(map_building_at(gridOffset),
 					gridOffset, xGraphic, yGraphic, 0);
 			} else {
@@ -141,8 +142,8 @@ void UI_CityBuildings_drawOverlayTopsFiguresAnimation(int overlay)
 					drawTopForWaterOverlay(gridOffset, xGraphic, yGraphic);
 				} else if (overlay == Overlay_Native) {
 					drawTopForNativeOverlay(gridOffset, xGraphic, yGraphic);
-				} else if (!(Data_Grid_terrain[gridOffset] & 0x4140)) { // wall, aqueduct, road
-					if ((Data_Grid_terrain[gridOffset] & Terrain_Building) && map_building_at(gridOffset)) {
+				} else if (!map_terrain_is(gridOffset, TERRAIN_WALL | TERRAIN_AQUEDUCT | TERRAIN_ROAD)) {
+					if (map_terrain_is(gridOffset, TERRAIN_BUILDING) && map_building_at(gridOffset)) {
 						int buildingId = map_building_at(gridOffset);
 						switch (overlay) {
 							case Overlay_Fire:
@@ -206,7 +207,7 @@ void UI_CityBuildings_drawOverlayTopsFiguresAnimation(int overlay)
 								drawBuildingTopForProblemsOverlay(gridOffset, buildingId, xGraphic, yGraphic);
 								break;
 						}
-					} else if (!(Data_Grid_terrain[gridOffset] & Terrain_Building)) {
+					} else if (!map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 						// terrain
 						draw_top_with_size(gridOffset, xGraphic, yGraphic);
 					}
@@ -291,33 +292,39 @@ void UI_CityBuildings_drawOverlayTopsFiguresAnimation(int overlay)
 						}
 					}
 				}
-			} else if (Data_Grid_spriteOffsets[gridOffset] && (Data_Grid_terrain[gridOffset] & Terrain_Water)) {
+			} else if (Data_Grid_spriteOffsets[gridOffset] && map_terrain_is(gridOffset, TERRAIN_WATER)) {
 				UI_CityBuildings_drawBridge(gridOffset, xGraphic, yGraphic);
 			}
 		} END_FOREACH_X_VIEW;
 	} END_FOREACH_Y_VIEW;
 }
 
-#define WATER_TERRAIN 0x1777
+static int terrain_on_water_overlay()
+{
+    return
+        TERRAIN_TREE | TERRAIN_ROCK | TERRAIN_WATER | TERRAIN_SCRUB |
+        TERRAIN_GARDEN | TERRAIN_ROAD | TERRAIN_AQUEDUCT | TERRAIN_ELEVATION |
+        TERRAIN_ACCESS_RAMP | TERRAIN_RUBBLE;
+}
 
 static void drawFootprintForWaterOverlay(int gridOffset, int xOffset, int yOffset)
 {
-	int terrain = Data_Grid_terrain[gridOffset];
-	if (terrain & WATER_TERRAIN) {
-		if (terrain & Terrain_Building) {
+	if (map_terrain_is(gridOffset, terrain_on_water_overlay())) {
+		if (map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 			drawBuildingFootprintForOverlay(map_building_at(gridOffset),
 				gridOffset, xOffset, yOffset, 0);
 		} else {
 			draw_foot_with_size(gridOffset, xOffset, yOffset);
 		}
-	} else if (terrain & Terrain_Wall) {
+	} else if (map_terrain_is(gridOffset, TERRAIN_WALL)) {
 		// display grass
 		int graphicId = image_group(GROUP_TERRAIN_GRASS_1) + (map_random_get(gridOffset) & 7);
 		DRAWFOOT_SIZE1(graphicId, xOffset, yOffset);
-	} else if (terrain & Terrain_Building) {
+	} else if (map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 		int buildingId = map_building_at(gridOffset);
+		int terrain = map_terrain_get(gridOffset);
 		if (buildingId && Data_Buildings[buildingId].hasWellAccess == 1) {
-			terrain |= Terrain_FountainRange;
+			terrain |= TERRAIN_FOUNTAIN_RANGE;
 		}
 		if (Data_Buildings[buildingId].type == BUILDING_WELL || Data_Buildings[buildingId].type == BUILDING_FOUNTAIN) {
 			DRAWFOOT_SIZE1(map_image_at(gridOffset), xOffset, yOffset);
@@ -325,14 +332,14 @@ static void drawFootprintForWaterOverlay(int gridOffset, int xOffset, int yOffse
 			DRAWFOOT_SIZE3(map_image_at(gridOffset), xOffset, yOffset);
 		} else {
 			int graphicOffset;
-			switch (terrain & (Terrain_ReservoirRange | Terrain_FountainRange)) {
-				case Terrain_ReservoirRange | Terrain_FountainRange:
+			switch (terrain & (TERRAIN_RESERVOIR_RANGE | TERRAIN_FOUNTAIN_RANGE)) {
+				case TERRAIN_RESERVOIR_RANGE | TERRAIN_FOUNTAIN_RANGE:
 					graphicOffset = 24;
 					break;
-				case Terrain_ReservoirRange:
+				case TERRAIN_RESERVOIR_RANGE:
 					graphicOffset = 8;
 					break;
-				case Terrain_FountainRange:
+				case TERRAIN_FOUNTAIN_RANGE:
 					graphicOffset = 16;
 					break;
 				default:
@@ -343,14 +350,14 @@ static void drawFootprintForWaterOverlay(int gridOffset, int xOffset, int yOffse
 		}
 	} else {
 		int graphicId = image_group(GROUP_TERRAIN_OVERLAY);
-		switch (terrain & (Terrain_ReservoirRange | Terrain_FountainRange)) {
-			case Terrain_ReservoirRange | Terrain_FountainRange:
+		switch (map_terrain_get(gridOffset) & (TERRAIN_RESERVOIR_RANGE | TERRAIN_FOUNTAIN_RANGE)) {
+			case TERRAIN_RESERVOIR_RANGE | TERRAIN_FOUNTAIN_RANGE:
 				graphicId += 27;
 				break;
-			case Terrain_ReservoirRange:
+			case TERRAIN_RESERVOIR_RANGE:
 				graphicId += 11;
 				break;
-			case Terrain_FountainRange:
+			case TERRAIN_FOUNTAIN_RANGE:
 				graphicId += 19;
 				break;
 			default:
@@ -363,9 +370,8 @@ static void drawFootprintForWaterOverlay(int gridOffset, int xOffset, int yOffse
 
 static void drawTopForWaterOverlay(int gridOffset, int xOffset, int yOffset)
 {
-	int terrain = Data_Grid_terrain[gridOffset];
-	if (terrain & WATER_TERRAIN) {
-		if (!(terrain & Terrain_Building)) {
+	if (map_terrain_is(gridOffset, terrain_on_water_overlay())) {
+		if (!map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 			draw_top_with_size(gridOffset, xOffset, yOffset);
 		}
 	} else if (map_building_at(gridOffset)) {
@@ -378,23 +384,27 @@ static void drawTopForWaterOverlay(int gridOffset, int xOffset, int yOffset)
 	}
 }
 
-#define NATIVE_NATURAL_TERRAIN 0x1637
+static int terrain_on_native_overlay()
+{
+    return
+        TERRAIN_TREE | TERRAIN_ROCK | TERRAIN_WATER | TERRAIN_SCRUB |
+        TERRAIN_GARDEN | TERRAIN_ELEVATION | TERRAIN_ACCESS_RAMP | TERRAIN_RUBBLE;
+}
 
 static void drawFootprintForNativeOverlay(int gridOffset, int xOffset, int yOffset)
 {
-	int terrain = Data_Grid_terrain[gridOffset];
-	if (terrain & NATIVE_NATURAL_TERRAIN) {
-		if (terrain & Terrain_Building) {
+	if (map_terrain_is(gridOffset, terrain_on_native_overlay())) {
+		if (map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 			drawBuildingFootprintForOverlay(map_building_at(gridOffset),
 				gridOffset, xOffset, yOffset, 0);
 		} else {
 			draw_foot_with_size(gridOffset, xOffset, yOffset);
 		}
-	} else if (terrain & (Terrain_Wall | Terrain_Aqueduct)) {
+	} else if (map_terrain_is(gridOffset, TERRAIN_AQUEDUCT | TERRAIN_WALL)) {
 		// display grass
 		int graphicId = image_group(GROUP_TERRAIN_GRASS_1) + (map_random_get(gridOffset) & 7);
 		DRAWFOOT_SIZE1(graphicId, xOffset, yOffset);
-	} else if (terrain & Terrain_Building) {
+	} else if (map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 		drawBuildingFootprintForOverlay(map_building_at(gridOffset),
 		gridOffset, xOffset, yOffset, 0);
 	} else {
@@ -408,9 +418,8 @@ static void drawFootprintForNativeOverlay(int gridOffset, int xOffset, int yOffs
 
 static void drawTopForNativeOverlay(int gridOffset, int xOffset, int yOffset)
 {
-	int terrain = Data_Grid_terrain[gridOffset];
-	if (terrain & NATIVE_NATURAL_TERRAIN) {
-		if (!(terrain & Terrain_Building)) {
+	if (map_terrain_is(gridOffset, terrain_on_native_overlay())) {
+		if (!map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 			draw_top_with_size(gridOffset, xOffset, yOffset);
 		}
 	} else if (map_building_at(gridOffset)) {
@@ -777,19 +786,26 @@ static void drawBuildingFootprintForOverlay(int buildingId, int gridOffset, int 
 	}
 }
 
+static int terrain_on_desirability_overlay()
+{
+    return
+        TERRAIN_TREE | TERRAIN_ROCK | TERRAIN_WATER |
+        TERRAIN_SCRUB | TERRAIN_GARDEN | TERRAIN_ROAD |
+        TERRAIN_ELEVATION | TERRAIN_ACCESS_RAMP | TERRAIN_RUBBLE;
+}
+
 static void drawBuildingFootprintForDesirabilityOverlay(int gridOffset, int xOffset, int yOffset)
 {
-	int terrain = Data_Grid_terrain[gridOffset];
-	if ((terrain & Terrain_NaturalElements) && !(terrain & Terrain_Building)) {
+	if (map_terrain_is(gridOffset, terrain_on_desirability_overlay()) && !map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 		// display normal tile
 		if (map_property_is_draw_tile(gridOffset)) {
 			draw_foot_with_size(gridOffset, xOffset, yOffset);
 		}
-	} else if (terrain & (Terrain_Wall | Terrain_Aqueduct)) {
+	} else if (map_terrain_is(gridOffset, TERRAIN_AQUEDUCT | TERRAIN_WALL)) {
 		// display empty land/grass
 		int graphicId = image_group(GROUP_TERRAIN_GRASS_1) + (map_random_get(gridOffset) & 7);
 		DRAWFOOT_SIZE1(graphicId, xOffset, yOffset);
-	} else if ((terrain & Terrain_Building) || map_desirability_get(gridOffset)) {
+	} else if (map_terrain_is(gridOffset, TERRAIN_BUILDING) || map_desirability_get(gridOffset)) {
 		int des = map_desirability_get(gridOffset);
 		int offset = 0;
 		if (des < -10) {
@@ -821,16 +837,14 @@ static void drawBuildingFootprintForDesirabilityOverlay(int gridOffset, int xOff
 
 static void drawBuildingTopForDesirabilityOverlay(int gridOffset, int xOffset, int yOffset)
 {
-	int terrain = Data_Grid_terrain[gridOffset];
-	// enum const: Terrain_NaturalElements = 0x1677
-	if ((terrain & Terrain_NaturalElements) && !(terrain & Terrain_Building)) {
+	if (map_terrain_is(gridOffset, terrain_on_desirability_overlay()) && !map_terrain_is(gridOffset, TERRAIN_BUILDING)) {
 		// display normal tile
 		if (map_property_is_draw_tile(gridOffset)) {
 			draw_top_with_size(gridOffset, xOffset, yOffset);
 		}
-	} else if (terrain & (Terrain_Wall | Terrain_Aqueduct)) {
+	} else if (map_terrain_is(gridOffset, TERRAIN_AQUEDUCT | TERRAIN_WALL)) {
 		// grass, no top needed
-	} else if ((terrain & Terrain_Building) || map_desirability_get(gridOffset)) {
+	} else if (map_terrain_is(gridOffset, TERRAIN_BUILDING) || map_desirability_get(gridOffset)) {
 		int des = map_desirability_get(gridOffset);
 		int offset;
 		if (des < -10) {

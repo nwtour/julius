@@ -15,6 +15,7 @@
 #include "map/image.h"
 #include "map/property.h"
 #include "map/routing_terrain.h"
+#include "map/terrain.h"
 #include "scenario/property.h"
 
 #include <string.h>
@@ -38,7 +39,7 @@ void UtilityManagement_updateHouseWaterAccess()
 			Data_Buildings[i].hasWellAccess = 0;
 			if (Terrain_existsTileWithinAreaWithType(
 				Data_Buildings[i].x, Data_Buildings[i].y,
-				Data_Buildings[i].size, Terrain_FountainRange)) {
+				Data_Buildings[i].size, TERRAIN_FOUNTAIN_RANGE)) {
 				Data_Buildings[i].hasWaterAccess = 1;
 			}
 		}
@@ -57,7 +58,7 @@ static void setAllAqueductsToNoWater()
 	int grid_offset = Data_State.map.gridStartOffset;
 	for (int y = 0; y < Data_State.map.height; y++, grid_offset += Data_State.map.gridBorderSize) {
 		for (int x = 0; x < Data_State.map.width; x++, grid_offset++) {
-			if (Data_Grid_terrain[grid_offset] & Terrain_Aqueduct) {
+			if (map_terrain_is(grid_offset, TERRAIN_AQUEDUCT)) {
 				Data_Grid_aqueducts[grid_offset] = 0;
 				int image_id = map_image_at(grid_offset);
 				if (image_id < image_without_water) {
@@ -70,7 +71,7 @@ static void setAllAqueductsToNoWater()
 
 static void fillAqueductsFromOffset(int gridOffset)
 {
-	if (!(Data_Grid_terrain[gridOffset] & Terrain_Aqueduct)) {
+	if (!map_terrain_is(gridOffset, TERRAIN_AQUEDUCT)) {
 		return;
 	}
 	memset(queue, 0, sizeof(queue));
@@ -99,7 +100,7 @@ static void fillAqueductsFromOffset(int gridOffset)
 						Data_Buildings[buildingId].hasWaterAccess = 2;
 					}
 				}
-			} else if (Data_Grid_terrain[newOffset] & Terrain_Aqueduct) {
+			} else if (map_terrain_is(newOffset, TERRAIN_AQUEDUCT)) {
 				if (!Data_Grid_aqueducts[newOffset]) {
 					if (nextOffset == -1) {
 						nextOffset = newOffset;
@@ -127,7 +128,7 @@ static void fillAqueductsFromOffset(int gridOffset)
 
 void UtilityManagement_updateReservoirFountain()
 {
-	map_grid_and_u16(Data_Grid_terrain, ~(Terrain_FountainRange | Terrain_ReservoirRange));
+	map_terrain_remove_all(TERRAIN_FOUNTAIN_RANGE | TERRAIN_RESERVOIR_RANGE);
 	// reservoirs
 	setAllAqueductsToNoWater();
 	building_list_large_clear(1);
@@ -136,7 +137,7 @@ void UtilityManagement_updateReservoirFountain()
 		if (BuildingIsInUse(i) && Data_Buildings[i].type == BUILDING_RESERVOIR) {
 			building_list_large_add(i);
 			if (Terrain_existsTileWithinAreaWithType(
-				Data_Buildings[i].x - 1, Data_Buildings[i].y - 1, 5, Terrain_Water)) {
+				Data_Buildings[i].x - 1, Data_Buildings[i].y - 1, 5, TERRAIN_WATER)) {
 				Data_Buildings[i].hasWaterAccess = 2;
 			} else {
 				Data_Buildings[i].hasWaterAccess = 0;
@@ -167,7 +168,7 @@ void UtilityManagement_updateReservoirFountain()
 		if (Data_Buildings[buildingId].hasWaterAccess) {
 			Terrain_setWithRadius(
 				Data_Buildings[buildingId].x, Data_Buildings[buildingId].y,
-				3, 10, Terrain_ReservoirRange);
+				3, 10, TERRAIN_RESERVOIR_RANGE);
 		}
 	}
 	// fountains
@@ -187,12 +188,12 @@ void UtilityManagement_updateReservoirFountain()
 		} else {
 			graphicId = image_group(GROUP_BUILDING_FOUNTAIN_1);
 		}
-		Terrain_addBuildingToGrids(i, b->x, b->y, 1, graphicId, Terrain_Building);
-		if ((Data_Grid_terrain[b->gridOffset] & Terrain_ReservoirRange) && b->numWorkers) {
+		Terrain_addBuildingToGrids(i, b->x, b->y, 1, graphicId, TERRAIN_BUILDING);
+		if (map_terrain_is(b->gridOffset, TERRAIN_RESERVOIR_RANGE) && b->numWorkers) {
 			b->hasWaterAccess = 1;
 			Terrain_setWithRadius(b->x, b->y, 1,
 				scenario_property_climate() == CLIMATE_DESERT ? 3 : 4,
-				Terrain_FountainRange);
+				TERRAIN_FOUNTAIN_RANGE);
 		} else {
 			b->hasWaterAccess = 0;
 		}

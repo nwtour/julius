@@ -5,7 +5,9 @@
 #include "Data/State.h"
 
 #include "map/building.h"
+#include "map/elevation.h"
 #include "map/property.h"
+#include "map/terrain.h"
 
 #define MAX_TILES 8
 
@@ -340,7 +342,7 @@ const TerrainGraphic *TerrainGraphicsContext_getElevation(int gridOffset, int he
 {
 	int tiles[MAX_TILES];
 	for (int i = 0; i < MAX_TILES; i++) {
-		tiles[i] = Data_Grid_elevation[gridOffset + contextTileOffsets[i]] >= height ? 1 : 0;
+		tiles[i] = map_elevation_at(gridOffset + contextTileOffsets[i]) >= height ? 1 : 0;
 	}
 	return TerrainGraphicsContext_getGraphic(TerrainGraphicsContext_Elevation, tiles);
 }
@@ -350,7 +352,7 @@ const TerrainGraphic *TerrainGraphicsContext_getEarthquake(int gridOffset)
 	int tiles[MAX_TILES];
 	for (int i = 0; i < MAX_TILES; i++) {
 		int offset = gridOffset + contextTileOffsets[i];
-		tiles[i] = ((Data_Grid_terrain[offset] & Terrain_Rock) &&
+		tiles[i] = (map_terrain_is(offset, TERRAIN_ROCK) &&
 			map_property_is_plaza_or_earthquake(gridOffset)) ? 1 : 0;
 	}
 	return TerrainGraphicsContext_getGraphic(TerrainGraphicsContext_Earthquake, tiles);
@@ -359,21 +361,21 @@ const TerrainGraphic *TerrainGraphicsContext_getEarthquake(int gridOffset)
 static void getTerrainMatch(int gridOffset, int terrain, int match, int noMatch, int tiles[MAX_TILES])
 {
 	for (int i = 0; i < MAX_TILES; i++) {
-		tiles[i] = Data_Grid_terrain[gridOffset + contextTileOffsets[i]] & terrain ? match : noMatch;
+		tiles[i] = map_terrain_is(gridOffset + contextTileOffsets[i], terrain) ? match : noMatch;
 	}
 }
 
 const TerrainGraphic *TerrainGraphicsContext_getShore(int gridOffset)
 {
 	int tiles[MAX_TILES];
-	getTerrainMatch(gridOffset, Terrain_Water, 0, 1, tiles);
+	getTerrainMatch(gridOffset, TERRAIN_WATER, 0, 1, tiles);
 	return TerrainGraphicsContext_getGraphic(TerrainGraphicsContext_Water, tiles);
 }
 
 const TerrainGraphic *TerrainGraphicsContext_getWall(int gridOffset)
 {
 	int tiles[MAX_TILES];
-	getTerrainMatch(gridOffset, Terrain_Wall, 0, 1, tiles);
+	getTerrainMatch(gridOffset, TERRAIN_WALL, 0, 1, tiles);
 	return TerrainGraphicsContext_getGraphic(TerrainGraphicsContext_Wall, tiles);
 }
 
@@ -381,17 +383,17 @@ const TerrainGraphic *TerrainGraphicsContext_getWallGatehouse(int gridOffset)
 {
 	int tiles[MAX_TILES] = {0,0,0,0,0,0,0,0};
 	for (int i = 0; i < MAX_TILES; i += 2) {
-		tiles[i] = Data_Grid_terrain[gridOffset + contextTileOffsets[i]] & Terrain_WallOrGatehouse ? 1 : 0;
+		tiles[i] = map_terrain_is(gridOffset + contextTileOffsets[i], TERRAIN_WALL_OR_GATEHOUSE) ? 1 : 0;
 	}
 	return TerrainGraphicsContext_getGraphic(TerrainGraphicsContext_WallGatehouse, tiles);
 }
 
 static void setTilesRoad(int gridOffset, int tiles[MAX_TILES])
 {
-	getTerrainMatch(gridOffset, Terrain_Road, 1, 0, tiles);
+	getTerrainMatch(gridOffset, TERRAIN_ROAD, 1, 0, tiles);
 	for (int i = 0; i < MAX_TILES; i += 2) {
 		int offset = gridOffset + contextTileOffsets[i];
-		if (Data_Grid_terrain[offset] & Terrain_Gatehouse) {
+		if (map_terrain_is(offset, TERRAIN_GATEHOUSE)) {
 			int buildingId = map_building_at(offset);
 			if (Data_Buildings[buildingId].type == BUILDING_GATEHOUSE &&
 				Data_Buildings[buildingId].subtype.orientation == 1 + ((i / 2) & 1)) { // 1,2,1,2
@@ -418,7 +420,7 @@ const TerrainGraphic *TerrainGraphicsContext_getPavedRoad(int gridOffset)
 static void setTerrainReservoir(int gridOffset, int index, int edgeMask, int tiles[MAX_TILES])
 {
 	int offset = gridOffset + contextTileOffsets[index];
-	if (Data_Grid_terrain[offset] & Terrain_Building) {
+	if (map_terrain_is(offset, TERRAIN_BUILDING)) {
 		int buildingId = map_building_at(offset);
 		if (Data_Buildings[buildingId].type == BUILDING_RESERVOIR &&
 			map_property_multi_tile_xy(offset) == edgeMask) {
@@ -430,12 +432,12 @@ static void setTerrainReservoir(int gridOffset, int index, int edgeMask, int til
 const TerrainGraphic *TerrainGraphicsContext_getAqueduct(int gridOffset, int includeOverlay)
 {
 	int tiles[MAX_TILES] = {0,0,0,0,0,0,0,0};
-	int hasRoad = (Data_Grid_terrain[gridOffset] & Terrain_Road) ? 1 : 0;
+	int hasRoad = map_terrain_is(gridOffset, TERRAIN_ROAD) ? 1 : 0;
 	for (int i = 0; i < MAX_TILES; i += 2) {
 		int offset = gridOffset + contextTileOffsets[i];
-		if (Data_Grid_terrain[offset] & Terrain_Aqueduct) {
+		if (map_terrain_is(offset, TERRAIN_AQUEDUCT)) {
 			if (hasRoad) {
-				if (!(Data_Grid_terrain[offset] & Terrain_Road)) {
+				if (!map_terrain_is(offset, TERRAIN_ROAD)) {
 					tiles[i] = 1;
 				}
 			} else {
@@ -461,7 +463,7 @@ int TerrainGraphicsContext_getNumWaterTiles(int gridOffset)
 {
 	int amount = 0;
 	for (int i = 0; i < MAX_TILES; i++) {
-		if (Data_Grid_terrain[gridOffset + contextTileOffsets[i]] & Terrain_Water) {
+		if (map_terrain_is(gridOffset + contextTileOffsets[i], TERRAIN_WATER)) {
 			amount++;
 		}
 	}
