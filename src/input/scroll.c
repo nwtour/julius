@@ -3,8 +3,7 @@
 #include "core/direction.h"
 #include "core/time.h"
 #include "game/settings.h"
-
-#include "Data/Screen.h"
+#include "graphics/screen.h"
 
 #define SCROLL_BORDER 5
 
@@ -19,7 +18,7 @@ static struct {
     } arrow_key;
 } data = {0, 0, {0, 0, 0, 0}};
 
-int scroll_in_progress()
+int scroll_in_progress(void)
 {
     return data.is_scrolling;
 }
@@ -30,11 +29,8 @@ static int should_scroll(const mouse *m)
         return 0;
     }
     time_millis current_time = time_get_millis();
-    int diff = current_time - data.last_scroll_time;
-    if (current_time < data.last_scroll_time) {
-        diff = 10000;
-    }
-    int scroll_delay = (100 - setting_scroll_speed()) / 10;
+    time_millis diff = current_time - data.last_scroll_time;
+    unsigned int scroll_delay = (100 - setting_scroll_speed()) / 10;
     if (scroll_delay < 10) { // 0% = 10 = no scroll at all
         if (diff >= 12 * scroll_delay + 2) {
             data.last_scroll_time = current_time;
@@ -59,7 +55,7 @@ int scroll_get_direction(const mouse *m)
         left = 1;
         data.is_scrolling = 1;
     }
-    if (m->x >= Data_Screen.width - SCROLL_BORDER) {
+    if (m->x >= screen_width() - SCROLL_BORDER) {
         right = 1;
         data.is_scrolling = 1;
     }
@@ -67,7 +63,7 @@ int scroll_get_direction(const mouse *m)
         top = 1;
         data.is_scrolling = 1;
     }
-    if (m->y >= Data_Screen.height - SCROLL_BORDER) {
+    if (m->y >= screen_height() - SCROLL_BORDER) {
         bottom = 1;
         data.is_scrolling = 1;
     }
@@ -117,22 +113,22 @@ int scroll_get_direction(const mouse *m)
     return DIR_8_NONE;
 }
 
-void scroll_arrow_left()
+void scroll_arrow_left(void)
 {
     data.arrow_key.left = 1;
 }
 
-void scroll_arrow_right()
+void scroll_arrow_right(void)
 {
     data.arrow_key.right = 1;
 }
 
-void scroll_arrow_up()
+void scroll_arrow_up(void)
 {
     data.arrow_key.up = 1;
 }
 
-void scroll_arrow_down()
+void scroll_arrow_down(void)
 {
     data.arrow_key.down = 1;
 }

@@ -1,22 +1,19 @@
 #include "earthquake.h"
 
+#include "building/building.h"
+#include "building/destruction.h"
 #include "city/message.h"
 #include "core/calc.h"
 #include "core/random.h"
+#include "figuretype/missile.h"
 #include "game/time.h"
 #include "map/building.h"
 #include "map/grid.h"
 #include "map/routing_terrain.h"
+#include "map/terrain.h"
+#include "map/tiles.h"
 #include "scenario/data.h"
 #include "sound/effect.h"
-
-#include "Data/Building.h"
-#include "Data/Grid.h"
-#include "Data/State.h"
-
-#include "../Building.h"
-#include "Figure.h"
-#include "TerrainGraphics.h"
 
 enum {
     EARTHQUAKE_NONE = 0,
@@ -39,7 +36,7 @@ static struct {
     } expand[4];
 } data;
 
-void scenario_earthquake_init()
+void scenario_earthquake_init(void)
 {
     data.game_year = scenario.start_year + scenario.earthquake.year;
     data.month = 2 + (random_byte() & 7);
@@ -68,39 +65,40 @@ void scenario_earthquake_init()
     }
 }
 
-static int canAdvanceEarthquakeToTile(int x, int y)
+static int can_advance_earthquake_to_tile(int x, int y)
 {
-    int terrain = Data_Grid_terrain[map_grid_offset(x, y)];
-    if (terrain & (Terrain_Elevation | Terrain_Rock | Terrain_Water)) {
+    if (map_terrain_is(map_grid_offset(x, y), TERRAIN_ELEVATION | TERRAIN_ROCK | TERRAIN_WATER)) {
         return 0;
     } else {
         return 1;
     }
 }
 
-static void advanceEarthquakeToTile(int x, int y)
+static void advance_earthquake_to_tile(int x, int y)
 {
-    int gridOffset = map_grid_offset(x, y);
-    int buildingId = map_building_at(gridOffset);
-    if (buildingId) {
-        Building_collapseOnFire(buildingId, 0);
-        Building_collapseLinked(buildingId, 1);
+    int grid_offset = map_grid_offset(x, y);
+    int building_id = map_building_at(grid_offset);
+    if (building_id) {
+        building_destroy_by_fire(building_get(building_id));
         sound_effect_play(SOUND_EFFECT_EXPLOSION);
-        Data_Buildings[buildingId].state = BuildingState_DeletedByGame;
+        int ruin_id = map_building_at(grid_offset);
+        if (ruin_id) {
+            building_get(ruin_id)->state = BUILDING_STATE_DELETED_BY_GAME;
+        }
     }
-    Data_Grid_terrain[gridOffset] = 0;
-    TerrainGraphics_setTileEarthquake(x, y);
-    TerrainGraphics_updateAllGardens();
-    TerrainGraphics_updateAllRoads();
-    TerrainGraphics_updateRegionPlazas(0, 0, Data_State.map.width - 1, Data_State.map.height - 1);
+    map_terrain_set(grid_offset, 0);
+    map_tiles_set_earthquake(x, y);
+    map_tiles_update_all_gardens();
+    map_tiles_update_all_roads();
+    map_tiles_update_all_plazas();
     
     map_routing_update_land();
     map_routing_update_walls();
     
-    Figure_createDustCloud(x, y, 1);
+    figure_create_explosion_cloud(x, y, 1);
 }
 
-void scenario_earthquake_process()
+void scenario_earthquake_process(void)
 {
     if (scenario.earthquake.severity == EARTHQUAKE_NONE ||
         scenario.earthquake_point.x == -1 || scenario.earthquake_point.y == -1) {
@@ -112,7 +110,7 @@ void scenario_earthquake_process()
             data.state = EVENT_IN_PROGRESS;
             data.duration = 0;
             data.delay = 0;
-            advanceEarthquakeToTile(data.expand[0].x, data.expand[0].y);
+            advance_earthquake_to_tile(data.expand[0].x, data.expand[0].y);
             city_message_post(1, MESSAGE_EARTHQUAKE, 0,
                 map_grid_offset(data.expand[0].x, data.expand[0].y));
         }
@@ -144,18 +142,18 @@ void scenario_earthquake_process()
                 case 15: index = 3; dx = 0; dy = 1; break;
                 default: return;
             }
-            int x = calc_bound(data.expand[index].x + dx, 0, Data_State.map.width - 1);
-            int y = calc_bound(data.expand[index].y + dy, 0, Data_State.map.height - 1);
-            if (canAdvanceEarthquakeToTile(x, y)) {
+            int x = calc_bound(data.expand[index].x + dx, 0, scenario.map.width - 1);
+            int y = calc_bound(data.expand[index].y + dy, 0, scenario.map.height - 1);
+            if (can_advance_earthquake_to_tile(x, y)) {
                 data.expand[index].x = x;
                 data.expand[index].y = y;
-                advanceEarthquakeToTile(x, y);
+                advance_earthquake_to_tile(x, y);
             }
         }
     }
 }
 
-int scenario_earthquake_is_in_progress()
+int scenario_earthquake_is_in_progress(void)
 {
     return data.state == EVENT_IN_PROGRESS;
 }

@@ -1,18 +1,17 @@
 #include "desirability.h"
 
+#include "building/building.h"
 #include "building/model.h"
 #include "core/calc.h"
+#include "map/data.h"
 #include "map/grid.h"
 #include "map/property.h"
 #include "map/ring.h"
-
-#include "Data/Building.h"
-#include "Data/State.h"
-#include "Terrain.h"
+#include "map/terrain.h"
 
 static grid_i8 desirability_grid;
 
-void map_desirability_clear()
+void map_desirability_clear(void)
 {
     map_grid_clear_i8(desirability_grid.items);
 }
@@ -20,10 +19,10 @@ void map_desirability_clear()
 static void add_desirability_at_distance(int x, int y, int size, int distance, int desirability)
 {
     int partially_outside_map = 0;
-    if (x - distance < -1 || x + distance + size - 1 > Data_State.map.width) {
+    if (x - distance < -1 || x + distance + size - 1 > map_data.width) {
         partially_outside_map = 1;
     }
-    if (y - distance < -1 || y + distance + size - 1 > Data_State.map.height) {
+    if (y - distance < -1 || y + distance + size - 1 > map_data.height) {
         partially_outside_map = 1;
     }
     int base_offset = map_grid_offset(x, y);
@@ -66,14 +65,15 @@ static void add_to_terrain(int x, int y, int size, int desirability, int step, i
     }
 }
 
-static void update_buildings()
+static void update_buildings(void)
 {
-    for (int i = 1; i <= Data_Buildings_Extra.highestBuildingIdInUse; i++) {
-        if (BuildingIsInUse(i)) {
-            const model_building *model = model_get_building(Data_Buildings[i].type);
+    int max_id = building_get_highest_id();
+    for (int i = 1; i <= max_id; i++) {
+        building *b = building_get(i);
+        if (b->state == BUILDING_STATE_IN_USE) {
+            const model_building *model = model_get_building(b->type);
             add_to_terrain(
-                Data_Buildings[i].x, Data_Buildings[i].y,
-                Data_Buildings[i].size,
+                b->x, b->y, b->size,
                 model->desirability_value,
                 model->desirability_step,
                 model->desirability_step_size,
@@ -82,45 +82,45 @@ static void update_buildings()
     }
 }
 
-static void update_terrain()
+static void update_terrain(void)
 {
-	int grid_offset = Data_State.map.gridStartOffset;
-	for (int y = 0; y < Data_State.map.height; y++, grid_offset += Data_State.map.gridBorderSize) {
-		for (int x = 0; x < Data_State.map.width; x++, grid_offset++) {
-			int terrain = Data_Grid_terrain[grid_offset];
-			if (map_property_is_plaza_or_earthquake(grid_offset)) {
-				int type;
-				if (terrain & Terrain_Road) {
-					type = BUILDING_PLAZA;
-				} else if (terrain & Terrain_Rock) {
-					// earthquake fault line: slight negative
-					type = BUILDING_HOUSE_VACANT_LOT;
-				} else {
-					// invalid plaza/earthquake flag
-					map_property_clear_plaza_or_earthquake(grid_offset);
-					continue;
-				}
-				const model_building *model = model_get_building(type);
-				add_to_terrain(x, y, 1,
+    int grid_offset = map_data.start_offset;
+    for (int y = 0; y < map_data.height; y++, grid_offset += map_data.border_size) {
+        for (int x = 0; x < map_data.width; x++, grid_offset++) {
+            int terrain = map_terrain_get(grid_offset);
+            if (map_property_is_plaza_or_earthquake(grid_offset)) {
+                int type;
+                if (terrain & TERRAIN_ROAD) {
+                    type = BUILDING_PLAZA;
+                } else if (terrain & TERRAIN_ROCK) {
+                    // earthquake fault line: slight negative
+                    type = BUILDING_HOUSE_VACANT_LOT;
+                } else {
+                    // invalid plaza/earthquake flag
+                    map_property_clear_plaza_or_earthquake(grid_offset);
+                    continue;
+                }
+                const model_building *model = model_get_building(type);
+                add_to_terrain(x, y, 1,
                     model->desirability_value,
                     model->desirability_step,
                     model->desirability_step_size,
                     model->desirability_range);
-			} else if (terrain & Terrain_Garden) {
+            } else if (terrain & TERRAIN_GARDEN) {
                 const model_building *model = model_get_building(BUILDING_GARDENS);
                 add_to_terrain(x, y, 1,
                     model->desirability_value,
                     model->desirability_step,
                     model->desirability_step_size,
                     model->desirability_range);
-			} else if (terrain & Terrain_Rubble) {
-				add_to_terrain(x, y, 1, -2, 1, 1, 2);
-			}
-		}
-	}
+            } else if (terrain & TERRAIN_RUBBLE) {
+                add_to_terrain(x, y, 1, -2, 1, 1, 2);
+            }
+        }
+    }
 }
 
-void map_desirability_update()
+void map_desirability_update(void)
 {
     map_desirability_clear();
     update_buildings();

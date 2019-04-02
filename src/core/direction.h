@@ -1,6 +1,14 @@
 #ifndef CORE_DIRECTION_H
 #define CORE_DIRECTION_H
 
+/**
+ * @file
+ * Direction
+ */
+
+/**
+ * Direction constants
+ */
 typedef enum {
     DIR_0_TOP = 0,
     DIR_1_TOP_RIGHT = 1,
@@ -15,6 +23,6 @@ typedef enum {
     DIR_FIGURE_REROUTE = 9,
     DIR_FIGURE_LOST = 10,
     DIR_FIGURE_ATTACK = 11,
-} direction;
+} direction_type;
 
 #endif // CORE_DIRECTION_H

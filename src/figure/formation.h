@@ -4,6 +4,8 @@
 #include "core/buffer.h"
 #include "figure/type.h"
 
+#define MAX_FORMATIONS 50
+
 #define MAX_LEGIONS 6
 #define MAX_FORMATION_FIGURES 16
 
@@ -31,9 +33,10 @@ enum {
     FORMATION_TORTOISE = 5,
     FORMATION_MOP_UP = 6,
     FORMATION_AT_REST = 7,
-    FORMATION_ENEMY8 = 8,
+    FORMATION_ENEMY_MOB = 8,
     FORMATION_HERD = 9,
-    FORMATION_ENEMY10 = 10,
+    FORMATION_ENEMY_DOUBLE_LINE = 10,
+    FORMATION_ENEMY_WIDE_COLUMN = 11,
     FORMATION_ENEMY12 = 12,
 };
 
@@ -121,87 +124,57 @@ typedef struct {
     } prev;
 } formation;
 
-void formations_clear();
+void formations_clear(void);
 
 void formation_clear(int formation_id);
 
-int formation_create_legion(int building_id, int x, int y, figure_type figure_type);
+formation *formation_create_legion(int building_id, int x, int y, figure_type type);
 int formation_create_herd(int figure_type, int x, int y, int num_animals);
 int formation_create_enemy(int figure_type, int x, int y, int layout, int orientation,
                            int enemy_type, int attack_type, int invasion_id, int invasion_sequence);
 
-void formation_set_standard(int formation_id, int standard_figure_id);
-void formation_move_standard(int formation_id, int x, int y);
-
-const formation *formation_get(int formation_id);
-formation_state *formation_get_state(int formation_id);
-
-void formation_set_figure_type(int formation_id, figure_type type);
-void formation_set_recruit_type(int formation_id, int recruit_type);
-
-void formation_set_halted(int formation_id, int halted);
-void formation_set_distant_battle(int formation_id, int distant_battle);
-void formation_set_at_fort(int formation_id, int at_fort);
-void formation_set_cursed(int formation_id);
-
-void formation_change_layout(int formation_id, int new_layout);
-
-void formation_restore_layout(int formation_id);
+formation *formation_get(int formation_id);
 
 void formation_toggle_empire_service(int formation_id);
 
-void formation_record_missile_fired(int formation_id);
-void formation_record_missile_attack(int formation_id, int from_formation_id);
-void formation_record_fight(int formation_id);
+void formation_record_missile_fired(formation *m);
+void formation_record_missile_attack(formation *m, int from_formation_id);
+void formation_record_fight(formation *m);
 
-int formation_for_invasion(int invasion_sequence);
+int formation_grid_offset_for_invasion(int invasion_sequence);
 
-void formation_caesar_pause();
+void formation_caesar_pause(void);
 
-void formation_caesar_retreat();
+void formation_caesar_retreat(void);
 
-void formation_foreach(void (*callback)(const formation*));
-void formation_foreach_herd(void (*callback)(const formation*));
-void formation_foreach_non_herd(void (*callback)(const formation*, void*), void *data);
-void formation_foreach_legion(void (*callback)(const formation*, void*), void *data);
+int formation_get_num_legions_cached(void);
+void formation_calculate_legion_totals(void);
 
-void formation_legion_set_trained(int formation_id);
-void formation_legion_set_max_figures();
-int formation_legion_prepare_to_move(int formation_id);
-
-int formation_totals_get_num_legions();
-void formation_totals_clear_legions();
-void formation_totals_add_legion(int formation_id);
-
-int formation_get_num_legions();
+int formation_get_num_legions(void);
 
 int formation_for_legion(int legion_index);
 
-void formation_change_morale(int formation_id, int amount);
-int formation_has_low_morale(int formation_id);
+void formation_change_morale(formation *m, int amount);
+int formation_has_low_morale(formation *m);
+void formation_update_morale_after_death(formation *m);
 
-void formation_update_monthly_morale_deployed();
-void formation_update_monthly_morale_at_rest();
-void formation_decrease_monthly_counters(int formation_id);
-void formation_clear_monthly_counters(int formation_id);
+void formation_update_monthly_morale_deployed(void);
+void formation_update_monthly_morale_at_rest(void);
+void formation_decrease_monthly_counters(formation *m);
+void formation_clear_monthly_counters(formation *m);
 
-void formation_set_destination(int formation_id, int x, int y);
-void formation_set_destination_building(int formation_id, int x, int y, int building_id);
-void formation_set_home(int formation_id, int x, int y);
+void formation_set_destination(formation *m, int x, int y);
+void formation_set_destination_building(formation *m, int x, int y, int building_id);
+void formation_set_home(formation *m, int x, int y);
 
-void formation_clear_figures();
+void formation_clear_figures(void);
 int formation_add_figure(int formation_id, int figure_id, int deployed, int damage, int max_damage);
 
 void formation_move_herds_away(int x, int y);
-int formation_can_spawn_wolf(int formation_id);
-void formation_herd_clear_direction(int formation_id);
 
-void formation_increase_wait_ticks(int formation_id);
-void formation_reset_wait_ticks(int formation_id);
+void formation_calculate_figures(void);
 
-void formation_set_enemy_legion(int formation_id, int enemy_legion_index);
-
-void formation_update_direction(int formation_id, int first_figure_direction);
+void formation_update_all(int second_time);
 
 
 void formations_save_state(buffer *buf, buffer *totals);

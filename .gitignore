@@ -1,5 +1,12 @@
 .kdev4
-build
+/build*
+cmake-build-debug
 /data
 doc
 *.kdev4
+.vs
+src/platform/version.h
+res/version.rc
+res/version.txt
+res/julius.icns
+/CMakeSettings.json

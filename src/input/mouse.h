@@ -13,7 +13,7 @@ typedef struct {
     int is_down; /**< Mouse button is down */
     int went_down; /**< Mouse button went down during this cycle */
     int went_up; /**< Mouse button went up during this cycle */
-    int new_is_down;
+    int system_change;
 } mouse_button;
 
 
@@ -38,7 +38,7 @@ typedef struct {
  * Gets the mouse state
  * @return Mouse state
  */
-const mouse *mouse_get();
+const mouse *mouse_get(void);
 
 /**
  * Sets the mouse position
@@ -55,8 +55,10 @@ void mouse_set_scroll(scroll_state state);
 
 void mouse_set_inside_window(int inside);
 
-void mouse_reset_up_state();
+void mouse_reset_up_state(void);
 
-void mouse_determine_button_state();
+void mouse_determine_button_state(void);
+
+const mouse *mouse_in_dialog(const mouse *m);
 
 #endif // GRAPHICS_MOUSE_H

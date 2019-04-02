@@ -1,91 +1,22 @@
 #ifndef GRAPHICS_IMAGE_H
 #define GRAPHICS_IMAGE_H
 
-#include <stdint.h>
-
+#include "core/image.h"
 #include "graphics/color.h"
-#include "graphics/image_group.h"
 
-/**
- * @file
- * Image functions
- */
+void image_draw(int image_id, int x, int y);
+void image_draw_enemy(int image_id, int x, int y);
 
-/**
- * Image metadata
- */
-typedef struct {
-    int width;
-    int height;
-    int num_animation_sprites;
-    int sprite_offset_x;
-    int sprite_offset_y;
-    int animation_can_reverse;
-    int animation_speed_id;
-    struct {
-        int type;
-        int is_fully_compressed;
-        int is_external;
-        int has_compressed_part;
-        int bitmap_id;
-        int offset;
-        int data_length;
-        int uncompressed_length;
-    } draw;
-} image;
+void image_draw_masked(int image_id, int x, int y, color_t color_mask);
+void image_draw_blend(int image_id, int x, int y, color_t color);
+void image_draw_letter(int letter_id, int x, int y, color_t color);
 
-/**
- * Initializes the image system
- */
-int image_init();
+void image_draw_fullscreen_background(int image_id);
 
-/**
- * Loads the image collection for the specified climate
- * @param climate_id Climate to load
- * @return boolean true on success, false on failure
- */
-int image_load_climate(int climate_id);
+void image_draw_isometric_footprint(int image_id, int x, int y, color_t color_mask);
+void image_draw_isometric_footprint_from_draw_tile(int image_id, int x, int y, color_t color_mask);
 
-/**
- * Loads the image collection for the specified enemy
- * @param enemy_id Enemy to load
- * @return boolean true on success, false on failure
- */
-int image_load_enemy(int enemy_id);
-
-/**
- * Gets the image id of the first image in the group
- * @param group Image group
- * @return Image id of first image
- */
-int image_group(int group);
-
-/**
- * Gets an image by id
- * @param id Image ID
- * @return Image
- */
-const image *image_get(int id);
-
-/**
- * Gets an enemy image by id
- * @param id Enemy image ID
- * @return Enemy image
- */
-const image *image_get_enemy(int id);
-
-/**
- * Gets image pixel data by id
- * @param id Image ID
- * @return Pointer to data or null, short term use only.
- */
-const color_t *image_data(int id);
-
-/**
- * Gets enemy image pixel data by id
- * @param id Enemy image ID
- * @return Pointer to data or null, short term use only.
- */
-const color_t *image_data_enemy(int id);
+void image_draw_isometric_top(int image_id, int x, int y, color_t color_mask);
+void image_draw_isometric_top_from_draw_tile(int image_id, int x, int y, color_t color_mask);
 
 #endif // GRAPHICS_IMAGE_H

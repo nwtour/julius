@@ -12,11 +12,12 @@
 /**
  * Initializes the figure name generator.
  */
-void figure_name_init();
+void figure_name_init(void);
 
 /**
  * Determines a new name for the figure type
  * @param type Type of figure
+ * @param enemy Enemy type if applicable
  * @return Name ID
  */
 int figure_name_get(figure_type type, enemy_type enemy);

@@ -1,6 +1,7 @@
 #include "../src/core/zip.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #define SAVEGAME_PARTS 300
 #define COMPRESS_BUFFER_SIZE 600000
@@ -250,14 +251,37 @@ static char compress_buffer[COMPRESS_BUFFER_SIZE];
 static unsigned char file1_data[1300000];
 static unsigned char file2_data[1300000];
 
+static unsigned int to_uint(const unsigned char *buffer)
+{
+    return buffer[0] | (buffer[1] << 8) | (buffer[2] << 16) | (buffer[3] << 24);
+}
+
+static unsigned int to_ushort(const unsigned char *buffer)
+{
+    return buffer[0] | (buffer[1] << 8);
+}
+
+static int index_of_part(const char *part_name)
+{
+    for (int i = 0; save_game_parts[i].length_in_bytes; i++) {
+        if (strcmp(part_name, save_game_parts[i].name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static int read_compressed_chunk(FILE *fp, void *buffer, int bytes_to_read)
 {
     if (bytes_to_read > COMPRESS_BUFFER_SIZE) {
         return 0;
     }
-    int input_size = bytes_to_read;
-    fread(&input_size, 4, 1, fp);
-    if ((unsigned int) input_size == UNCOMPRESSED) {
+    unsigned int input_size = bytes_to_read;
+    unsigned char intbuf[4];
+    if (fread(&intbuf, 1, 4, fp) == 4) {
+        input_size = to_uint(intbuf);
+    }
+    if (input_size == UNCOMPRESSED) {
         fread(buffer, 1, bytes_to_read, fp);
     } else {
         fread(compress_buffer, 1, input_size, fp);
@@ -288,15 +312,61 @@ static int unpack(const char *filename, unsigned char *buffer)
     return offset;
 }
 
+static int is_between(unsigned int value, unsigned int range_from, unsigned int range_to)
+{
+    return value >= range_from && value <= range_to;
+}
+
+static int both_between(unsigned int value1, unsigned int value2, unsigned int range_from, unsigned int range_to)
+{
+    return is_between(value1, range_from, range_to) && is_between(value2, range_from, range_to);
+}
+
+static int is_exception_cityinfo(int global_offset, int part_offset)
+{
+    if (part_offset == 35160) {
+        // Bug fixed compared to C3: caesar invasion and barbarian invasion
+        // influence on peace rating are switched
+        if (file1_data[global_offset] == 7 && file2_data[global_offset] == 8) {
+            return 1;
+        }
+        if (file1_data[global_offset] == 8 && file2_data[global_offset] == 7) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int is_exception_image_grid(int global_offset)
+{
+    unsigned int v1 = to_ushort(&file1_data[global_offset & ~1]);
+    unsigned int v2 = to_ushort(&file2_data[global_offset & ~1]);
+    // water: depends on animation timer
+    if (both_between(v1, v2, 364, 369)) {
+        return 1;
+    }
+    // burning tent: fix in julius to use its own graphic
+    if ((v1 == 734 && is_between(v2, 743, 770)) || (v2 == 734 && is_between(v1, 743, 770))) {
+        return 1;
+    }
+    return 0;
+}
+
+static int is_exception_buildings(int global_offset, int part_offset)
+{
+    int building_offset = (global_offset - part_offset) + 128 * (part_offset / 128);
+    int difference_offset = global_offset - building_offset;
+    int type = to_ushort(&file1_data[building_offset + 10]);
+    if (type == 99 && is_between(difference_offset, 0x4A, 0x73)) { // burning ruin extra data
+        return 1;
+    }
+    return 0;
+}
+
 static int is_exception(int index, int global_offset, int part_offset)
 {
     if (index == 2) { // Data_Grid_graphicIds
-        unsigned char v1 = file1_data[global_offset];
-        unsigned char v2 = file2_data[global_offset];
-        // water: animation timer
-        if (v1 >= 108 && v1 <= 113 && v2 >= 108 && v2 <= 113) {
-            return 1;
-        }
+        return is_exception_image_grid(global_offset);
     }
     if (index == 9) { // sprite offsets
         // don't care about sprite + building = animation
@@ -305,8 +375,25 @@ static int is_exception(int index, int global_offset, int part_offset)
             return 1;
         }
     }
-    if (index == 15) { // Data_Grid_Undo_spriteOffsets
+    if (index == index_of_part("Data_Grid_Undo_spriteOffsets")) {
         return 1;
+    }
+    if (index == index_of_part("Data_Settings_Map.camera.x") || index == index_of_part("Data_Settings_Map.camera.y")) {
+        return 1;
+    }
+    if (index == index_of_part("Data_CityInfo")) {
+        return is_exception_cityinfo(global_offset, part_offset);
+    }
+    if (index == index_of_part("Data_Buildings")) {
+        return is_exception_buildings(global_offset, part_offset);
+    }
+    if (index == index_of_part("Data_BuildingList.burning.index")) {
+        // We use it for burning size in Julius, while C3 writes the index used to loop over the buildings,
+        // which is either 0 (no prefects in the city) or the burning size
+        // So: we ignore this variable if one of them is zero
+        if (to_uint(&file1_data[global_offset - part_offset]) == 0 || to_uint(&file2_data[global_offset - part_offset]) == 0) {
+            return 1;
+        }
     }
     return 0;
 }
@@ -318,9 +405,14 @@ static int compare_part(int index, int offset)
     for (int i = 0; i < length; i++) {
         if (file1_data[offset + i] != file2_data[offset + i] && !is_exception(index, offset + i, i)) {
             different = 1;
-            printf("Part %d [%s] ", index, save_game_parts[index].name);
+            printf("Part %d [%s] (%d) ", index, save_game_parts[index].name, i);
             if (save_game_parts[index].record_length) {
                 printf("record %d offset 0x%X", i / save_game_parts[index].record_length, i % save_game_parts[index].record_length);
+                if (index == index_of_part("Data_Buildings")) {
+                    int record_length = save_game_parts[index].record_length;
+                    int type_offset = (i / record_length) * record_length + 10;
+                    printf(" (type: %d)", to_ushort(&file1_data[offset + type_offset]));
+                }
             } else {
                 printf("offset %d", i);
             }
@@ -328,11 +420,6 @@ static int compare_part(int index, int offset)
         }
     }
     return different;
-}
-
-static unsigned int to_uint(unsigned char *buffer)
-{
-    return buffer[0] | (buffer[1] << 8) | (buffer[2] << 16) | (buffer[3] << 24);
 }
 
 static void print_game_time(unsigned char *data)
@@ -343,11 +430,11 @@ static void print_game_time(unsigned char *data)
     unsigned int month = to_uint(&data[offset_tick + 8]);
     int year = (int) to_uint(&data[offset_tick + 12]);
     unsigned int total_days = to_uint(&data[offset_tick + 16]);
-    
+
     printf("%d.%u.%u.%u (%u)\n", year, month, day, tick, total_days);
 }
 
-static void compare_game_time()
+static void compare_game_time(void)
 {
     int offset_tick = 1200222;
     int offset_days = offset_tick + 16;
@@ -362,7 +449,7 @@ static void compare_game_time()
     }
 }
 
-static int compare()
+static int compare(void)
 {
     compare_game_time();
     int offset = 0;

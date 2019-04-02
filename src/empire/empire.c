@@ -1,20 +1,24 @@
 #include "empire.h"
 
 #include "building/count.h"
-#include "city/message.h"
+#include "city/constants.h"
+#include "city/population.h"
+#include "city/resource.h"
 #include "core/calc.h"
+#include "core/log.h"
 #include "core/io.h"
 #include "empire/city.h"
 #include "empire/object.h"
 #include "empire/trade_route.h"
-#include "game/time.h"
 
-#include "Data/CityInfo.h"
-#include "Data/Constants.h"
+#include <string.h>
 
 enum {
     EMPIRE_WIDTH = 2000,
-    EMPIRE_HEIGHT = 1000
+    EMPIRE_HEIGHT = 1000,
+    EMPIRE_HEADER_SIZE = 1280,
+    EMPIRE_DATA_SIZE = 12800,
+    SCROLL_AMOUNT = 20
 };
 
 static struct {
@@ -29,24 +33,30 @@ static struct {
 
 void empire_load(int is_custom_scenario, int empire_id)
 {
-    char raw_data[12800];
+    char raw_data[EMPIRE_DATA_SIZE];
     const char *filename = is_custom_scenario ? "c32.emp" : "c3.emp";
     
     // read header with scroll positions
-    io_read_file_part_into_buffer(filename, raw_data, 4, 32 * empire_id);
+    if (!io_read_file_part_into_buffer(filename, raw_data, 4, 32 * empire_id)) {
+        memset(raw_data, 0, 4);
+    }
     buffer buf;
     buffer_init(&buf, raw_data, 4);
     data.initial_scroll_x = buffer_read_i16(&buf);
     data.initial_scroll_y = buffer_read_i16(&buf);
 
     // read data section with objects
-    int offset = 1280 + 12800 * empire_id;
-    io_read_file_part_into_buffer(filename, raw_data, 12800, offset);
-    buffer_init(&buf, raw_data, 12800);
+    int offset = EMPIRE_HEADER_SIZE + EMPIRE_DATA_SIZE * empire_id;
+    if (io_read_file_part_into_buffer(filename, raw_data, EMPIRE_DATA_SIZE, offset) != EMPIRE_DATA_SIZE) {
+        // load empty empire when loading fails
+        log_error("Unable to load empire data from file", filename, 0);
+        memset(raw_data, 0, EMPIRE_DATA_SIZE);
+    }
+    buffer_init(&buf, raw_data, EMPIRE_DATA_SIZE);
     empire_object_load(&buf);
 }
 
-void empire_init_scenario()
+void empire_init_scenario(void)
 {
     data.scroll_x = data.initial_scroll_x;
     data.scroll_y = data.initial_scroll_y;
@@ -56,13 +66,13 @@ void empire_init_scenario()
     empire_object_init_cities();
 }
 
-static void check_scroll_boundaries()
+static void check_scroll_boundaries(void)
 {
     int max_x = EMPIRE_WIDTH - data.viewport_width;
     int max_y = EMPIRE_HEIGHT - data.viewport_height;
 
-    data.scroll_x = calc_bound(data.scroll_x, 0, max_x - 1);
-    data.scroll_y = calc_bound(data.scroll_y, 0, max_y - 1);
+    data.scroll_x = calc_bound(data.scroll_x, 0, max_x);
+    data.scroll_y = calc_bound(data.scroll_y, 0, max_y);
 }
 
 void empire_set_viewport(int width, int height)
@@ -85,43 +95,43 @@ void empire_scroll_map(int direction)
     }
     switch (direction) {
         case DIR_0_TOP:
-            data.scroll_y -= 20;
+            data.scroll_y -= SCROLL_AMOUNT;
             break;
         case DIR_1_TOP_RIGHT:
-            data.scroll_x += 20;
-            data.scroll_y -= 20;
+            data.scroll_x += SCROLL_AMOUNT;
+            data.scroll_y -= SCROLL_AMOUNT;
             break;
         case DIR_2_RIGHT:
-            data.scroll_x += 20;
+            data.scroll_x += SCROLL_AMOUNT;
             break;
         case DIR_3_BOTTOM_RIGHT:
-            data.scroll_x += 20;
-            data.scroll_y += 20;
+            data.scroll_x += SCROLL_AMOUNT;
+            data.scroll_y += SCROLL_AMOUNT;
             break;
         case DIR_4_BOTTOM:
-            data.scroll_y += 20;
+            data.scroll_y += SCROLL_AMOUNT;
             break;
         case DIR_5_BOTTOM_LEFT:
-            data.scroll_x -= 20;
-            data.scroll_y += 20;
+            data.scroll_x -= SCROLL_AMOUNT;
+            data.scroll_y += SCROLL_AMOUNT;
             break;
         case DIR_6_LEFT:
-            data.scroll_x -= 20;
+            data.scroll_x -= SCROLL_AMOUNT;
             break;
         case DIR_7_TOP_LEFT:
-            data.scroll_x -= 20;
-            data.scroll_y -= 20;
+            data.scroll_x -= SCROLL_AMOUNT;
+            data.scroll_y -= SCROLL_AMOUNT;
             break;
-    };
+    }
     check_scroll_boundaries();
 }
 
-int empire_selected_object()
+int empire_selected_object(void)
 {
     return data.selected_object;
 }
 
-void empire_clear_selected_object()
+void empire_clear_selected_object(void)
 {
     data.selected_object = 0;
 }
@@ -141,14 +151,28 @@ int empire_can_export_resource_to_city(int city_id, int resource)
         // quota reached
         return 0;
     }
-    if (Data_CityInfo.resourceStored[resource] <= Data_CityInfo.resourceTradeExportOver[resource]) {
+    if (city_resource_count(resource) <= city_resource_export_over(resource)) {
         // stocks too low
         return 0;
     }
     if (city_id == 0 || city->buys_resource[resource]) {
-        return Data_CityInfo.resourceTradeStatus[resource] == TradeStatus_Export;
+        return city_resource_trade_status(resource) == TRADE_STATUS_EXPORT;
     } else {
         return 0;
+    }
+}
+
+static int get_max_stock_for_population(void)
+{
+    int population = city_population();
+    if (population < 2000) {
+        return 10;
+    } else if (population < 4000) {
+        return 20;
+    } else if (population < 6000) {
+        return 30;
+    } else {
+        return 40;
     }
 }
 
@@ -158,14 +182,14 @@ int empire_can_import_resource_from_city(int city_id, int resource)
     if (!city->sells_resource[resource]) {
         return 0;
     }
-    if (Data_CityInfo.resourceTradeStatus[resource] != TradeStatus_Import) {
+    if (city_resource_trade_status(resource) != TRADE_STATUS_IMPORT) {
         return 0;
     }
     if (trade_route_limit_reached(city->route_id, resource)) {
         return 0;
     }
 
-    int in_stock = Data_CityInfo.resourceStored[resource];
+    int in_stock = city_resource_count(resource);
     int max_in_stock = 0;
     int finished_good = RESOURCE_NONE;
     switch (resource) {
@@ -178,15 +202,7 @@ int empire_can_import_resource_from_city(int city_id, int resource)
         case RESOURCE_FURNITURE:
         case RESOURCE_OIL:
         case RESOURCE_WINE:
-            if (Data_CityInfo.population < 2000) {
-                max_in_stock = 10;
-            } else if (Data_CityInfo.population < 4000) {
-                max_in_stock = 20;
-            } else if (Data_CityInfo.population < 6000) {
-                max_in_stock = 30;
-            } else {
-                max_in_stock = 40;
-            }
+            max_in_stock = get_max_stock_for_population();
             break;
 
         case RESOURCE_MARBLE:
@@ -214,11 +230,6 @@ int empire_can_import_resource_from_city(int city_id, int resource)
         max_in_stock = 2 + 2 * building_count_industry_active(finished_good);
     }
     return in_stock < max_in_stock ? 1 : 0;
-}
-
-void empire_determine_distant_battle_city()
-{
-    Data_CityInfo.distantBattleCityId = empire_city_get_vulnerable_roman();
 }
 
 void empire_save_state(buffer *buf)

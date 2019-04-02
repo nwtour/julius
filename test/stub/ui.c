@@ -1,65 +1,48 @@
-#include "UI/Advisors.h"
-#include "UI/MessageDialog.h"
-#include "UI/Window.h"
+#include "graphics/window.h"
+#include "window/message_dialog.h"
+#include "window/popup_dialog.h"
+#include "window/mission_end.h"
+#include "window/victory_dialog.h"
 
-void UI_Tooltip_resetTimer()
-{}
-
-void UI_Window_goTo(WindowId windowId)
-{}
-
-WindowId UI_Window_getId()
+int window_is(window_id id)
 {
-    return Window_City;
+    return id == WINDOW_CITY;
 }
 
-void UI_Window_requestRefresh()
+void window_invalidate(void)
 {}
 
-void UI_Window_refresh(int force)
+void window_logo_show(void)
 {}
 
-void UI_MessageDialog_show(int textId, int backgroundIsProvided)
+void window_mission_end_show_fired(void)
 {}
 
-void UI_MessageDialog_setPlayerMessage(int year, int month,
-                                       int param1, int param2,
-                                       int messageAdvisor, int usePopup)
+void window_mission_end_show_won(void)
 {}
 
-void UI_PopupDialog_show(int msgId, void (*okFunc)(int), int hasOkCancelButtons)
+void window_victory_dialog_show(void)
 {}
 
-void UI_Intermezzo_show(int type, WindowId nextWindowId, int timeMillis)
-{}
+window_id window_get_id(void)
+{
+    return WINDOW_CITY;
+}
 
-void UI_VideoIntermezzo_show(const char* filename, int width, int height, WindowId nextWindowId)
-{}
-
-void UI_Sidebar_enableBuildingButtons()
-{}
-
-void UI_Sidebar_requestMinimapRefresh()
-{}
-
-void UI_Sidebar_rotateMap(int clockWise)
-{}
-
-void UI_PlayerMessageList_resetScroll()
-{}
-
-void UI_TopMenu_initFromSettings()
-{}
-
-int UI_Advisors_getId()
+int window_is_invalid(void)
 {
     return 0;
 }
 
-void UI_Advisors_goToFromMessage(int advisor)
+void window_draw(int force)
 {}
 
-int UI_BuildingInfo_getBuildingType()
-{
-    return 0;
-}
+void window_message_dialog_show_city_message(int text_id, int year, int month,
+                                             int param1, int param2, int message_advisor, int use_popup)
+{}
+
+void window_popup_dialog_show(popup_dialog_type type, void (*okFunc)(int), int hasOkCancelButtons)
+{}
+
+void widget_sidebar_invalidate_minimap(void)
+{}

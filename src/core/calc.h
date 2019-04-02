@@ -45,6 +45,13 @@ int calc_maximum_distance(int x1, int y1, int x2, int y2);
 int calc_minimum_distance(int x1, int y1, int x2, int y2);
 
 /**
+ * Gets maximum distance with penalty applied
+ * @return max(dx, dy) + difference between dist_to_entry
+ */
+int calc_distance_with_penalty(int x1, int y1, int x2, int y2,
+                               int dist_to_entry1, int dist_to_entry2);
+
+/**
  * Gets the general direction from 'from' to 'to'
  * @param x_from Source X
  * @param y_from Source Y
@@ -52,7 +59,7 @@ int calc_minimum_distance(int x1, int y1, int x2, int y2);
  * @param y_to Destination Y
  * @return Direction
  */
-direction calc_general_direction(int x_from, int y_from, int x_to, int y_to);
+direction_type calc_general_direction(int x_from, int y_from, int x_to, int y_to);
 
 /**
  * Gets the direction for a missile shooter
@@ -62,7 +69,7 @@ direction calc_general_direction(int x_from, int y_from, int x_to, int y_to);
  * @param y_to Destination Y
  * @return Direction
  */
-direction calc_missile_shooter_direction(int x_from, int y_from, int x_to, int y_to);
+direction_type calc_missile_shooter_direction(int x_from, int y_from, int x_to, int y_to);
 
 /**
  * Gets the direction for a missile

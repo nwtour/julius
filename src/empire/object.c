@@ -1,13 +1,11 @@
 #include "object.h"
 
-#include "core/buffer.h"
 #include "core/calc.h"
-#include "core/io.h"
+#include "core/image.h"
 #include "empire/city.h"
 #include "empire/trade_route.h"
 #include "empire/type.h"
-#include "graphics/image.h"
-#include "game/resource.h"
+#include "game/animation.h"
 #include "scenario/empire.h"
 
 #define HEADER_SIZE 1280
@@ -34,7 +32,7 @@ static full_empire_object objects[MAX_OBJECTS];
 static int get_trade_amount_code(int index, int resource);
 static int is_sea_trade_route(int route_id);
 
-static void fix_image_ids()
+static void fix_image_ids(void)
 {
     int image_id = 0;
     for (int i = 0; i < MAX_OBJECTS; i++) {
@@ -106,16 +104,16 @@ void empire_object_load(buffer *buf)
     fix_image_ids();
 }
 
-void empire_object_init_cities()
+void empire_object_init_cities(void)
 {
     empire_city_clear_all();
-    int routeIndex = 1;
+    int route_index = 1;
     for (int i = 0; i < MAX_OBJECTS; i++) {
         if (!objects[i].in_use || objects[i].obj.type != EMPIRE_OBJECT_CITY) {
             continue;
         }
         full_empire_object *obj = &objects[i];
-        empire_city *city = empire_city_get(routeIndex++);
+        empire_city *city = empire_city_get(route_index++);
         city->in_use = 1;
         city->type = obj->city_type;
         city->name_id = obj->city_name_id;
@@ -145,16 +143,14 @@ void empire_object_init_cities()
             if (empire_object_city_buys_resource(i, resource)) {
                 city->buys_resource[resource] = 1;
             }
-            int amountCode = get_trade_amount_code(i, resource);
-            int routeId = city->route_id;
             int amount;
-            switch (amountCode) {
+            switch (get_trade_amount_code(i, resource)) {
                 case 1: amount = 15; break;
                 case 2: amount = 25; break;
                 case 3: amount = 40; break;
                 default: amount = 0; break;
             }
-            trade_route_init(routeId, resource, amount);
+            trade_route_init(city->route_id, resource, amount);
         }
         city->trader_entry_delay = 4;
         city->trader_figure_ids[0] = 0;
@@ -205,7 +201,7 @@ const empire_object *empire_object_get_battle_icon(int path_id, int year)
     return 0;
 }
 
-int empire_object_get_max_invasion_path()
+int empire_object_get_max_invasion_path(void)
 {
     int max_path = 0;
     for (int i = 0; i < MAX_OBJECTS; i++) {
@@ -293,14 +289,14 @@ static int get_trade_amount_code(int index, int resource)
     if (!is_trade_city(index)) {
         return 0;
     }
-    int resourceFlag = 1 << resource;
-    if (objects[index].trade40 & resourceFlag) {
+    int resource_flag = 1 << resource;
+    if (objects[index].trade40 & resource_flag) {
         return 3;
     }
-    if (objects[index].trade25 & resourceFlag) {
+    if (objects[index].trade25 & resource_flag) {
         return 2;
     }
-    if (objects[index].trade15 & resourceFlag) {
+    if (objects[index].trade15 & resource_flag) {
         return 1;
     }
     return 0;
@@ -321,8 +317,49 @@ static int is_sea_trade_route(int route_id)
     return 0;
 }
 
-void empire_object_update_animation(int object_id, int new_animation_index)
+static int get_animation_offset(int image_id, int current_index)
 {
-    objects[object_id].obj.animation_index = new_animation_index;
+    if (current_index <= 0) {
+        current_index = 1;
+    }
+    const image *img = image_get(image_id);
+    int animation_speed = img->animation_speed_id;
+    if (!game_animation_should_advance(animation_speed)) {
+        return current_index;
+    }
+    if (img->animation_can_reverse) {
+        int is_reverse = 0;
+        if (current_index & 0x80) {
+            is_reverse = 1;
+        }
+        int current_sprite = current_index & 0x7f;
+        if (is_reverse) {
+            current_index = current_sprite - 1;
+            if (current_index < 1) {
+                current_index = 1;
+                is_reverse = 0;
+            }
+        } else {
+            current_index = current_sprite + 1;
+            if (current_index > img->num_animation_sprites) {
+                current_index = img->num_animation_sprites;
+                is_reverse = 1;
+            }
+        }
+        if (is_reverse) {
+            current_index = current_index | 0x80;
+        }
+    } else {
+        // Absolutely normal case
+        current_index++;
+        if (current_index > img->num_animation_sprites) {
+            current_index = 1;
+        }
+    }
+    return current_index;
 }
 
+int empire_object_update_animation(const empire_object *obj, int image_id)
+{
+    return objects[obj->id].obj.animation_index = get_animation_offset(image_id, obj->animation_index);
+}

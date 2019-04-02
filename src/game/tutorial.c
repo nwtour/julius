@@ -1,10 +1,11 @@
 #include "tutorial.h"
 
-#include "SidebarMenu.h"
-
-#include "Data/CityInfo.h"
-
+#include "building/menu.h"
+#include "city/buildings.h"
 #include "city/message.h"
+#include "city/mission.h"
+#include "city/population.h"
+#include "city/resource.h"
 #include "game/resource.h"
 #include "game/time.h"
 #include "scenario/criteria.h"
@@ -29,7 +30,7 @@ static struct {
     } tutorial3;
 } data;
 
-void tutorial_init()
+void tutorial_init(void)
 {
     int tut1 = 1, tut2 = 1, tut3 = 1;
     if (scenario_is_tutorial_1()) {
@@ -44,7 +45,7 @@ void tutorial_init()
     data.tutorial1.crime = tut1;
     data.tutorial1.collapse = tut1;
     data.tutorial1.senate_built = tut1;
-    Data_CityInfo.tutorial1FireMessageShown = tut1;
+    city_mission_tutorial_set_fire_message_shown(tut1);
 
     data.tutorial2.granary_built = tut2;
     data.tutorial2.population_250_reached = tut2;
@@ -53,10 +54,10 @@ void tutorial_init()
     data.tutorial2.pottery_made_year = tut2;
 
     data.tutorial3.disease = tut3;
-    Data_CityInfo.tutorial3DiseaseMessageShown = tut3;
+    city_mission_tutorial_set_disease_message_shown(tut3);
 }
 
-tutorial_availability tutorial_advisor_empire_availability()
+tutorial_availability tutorial_advisor_empire_availability(void)
 {
     if (scenario_is_tutorial_1()) {
         return NOT_AVAILABLE;
@@ -67,7 +68,7 @@ tutorial_availability tutorial_advisor_empire_availability()
     }
 }
 
-tutorial_build_buttons tutorial_get_build_buttons()
+tutorial_build_buttons tutorial_get_build_buttons(void)
 {
     if (scenario_is_tutorial_1()) {
         if (!data.tutorial1.fire && !data.tutorial1.crime) {
@@ -109,7 +110,7 @@ int tutorial_get_population_cap(int current_cap)
     return current_cap;
 }
 
-int tutorial_get_immediate_goal_text()
+int tutorial_get_immediate_goal_text(void)
 {
     if (scenario_is_tutorial_1()) {
         if (!data.tutorial1.fire && !data.tutorial1.crime) {
@@ -148,20 +149,14 @@ int tutorial_adjust_request_year(int *year)
     return 1;
 }
 
-int tutorial_extra_fire_risk()
+int tutorial_extra_fire_risk(void)
 {
     return !data.tutorial1.fire;
 }
 
-int tutorial_extra_damage_risk()
+int tutorial_extra_damage_risk(void)
 {
     return data.tutorial1.fire && !data.tutorial1.collapse;
-}
-
-
-static void refresh_buttons()
-{
-    SidebarMenu_enableBuildingMenuItemsAndButtons();
 }
 
 static void post_message(int message)
@@ -169,100 +164,98 @@ static void post_message(int message)
     city_message_post(1, message, 0, 0);
 }
 
-int tutorial_handle_fire()
+int tutorial_handle_fire(void)
 {
     if (data.tutorial1.fire) {
         return 0;
     }
     data.tutorial1.fire = 1;
-    refresh_buttons();
+    building_menu_update();
     post_message(MESSAGE_TUTORIAL_FIRE);
     return 1;
 }
 
-int tutorial_handle_collapse()
+int tutorial_handle_collapse(void)
 {
     if (data.tutorial1.collapse) {
         return 0;
     }
     data.tutorial1.collapse = 1;
-    refresh_buttons();
+    building_menu_update();
     post_message(MESSAGE_TUTORIAL_COLLAPSE);
     return 1;
 }
 
-void tutorial_on_crime()
+void tutorial_on_crime(void)
 {
     if (!data.tutorial1.crime) {
         data.tutorial1.crime = 1;
-        refresh_buttons();
+        building_menu_update();
     }
 }
 
-void tutorial_on_disease()
+void tutorial_on_disease(void)
 {
     data.tutorial3.disease = 1;
 }
 
-void tutorial_on_filled_granary()
+void tutorial_on_filled_granary(void)
 {
     if (!data.tutorial2.granary_built) {
         data.tutorial2.granary_built = 1;
-        refresh_buttons();
+        building_menu_update();
         post_message(MESSAGE_TUTORIAL_WATER);
     }
 }
 
-void tutorial_on_add_to_warehouse()
+void tutorial_on_add_to_warehouse(void)
 {
-    if (Data_CityInfo.resourceStored[RESOURCE_POTTERY] >= 1 &&
-            !data.tutorial2.pottery_made) {
+    if (!data.tutorial2.pottery_made && city_resource_count(RESOURCE_POTTERY) >= 1) {
         data.tutorial2.pottery_made = 1;
         data.tutorial2.pottery_made_year = game_time_year();
-        refresh_buttons();
+        building_menu_update();
         post_message(MESSAGE_TUTORIAL_TRADE);
     }
 }
 
-void tutorial_on_day_tick()
+void tutorial_on_day_tick(void)
 {
-    if (data.tutorial1.fire && !Data_CityInfo.tutorial1FireMessageShown) {
-        Data_CityInfo.tutorial1FireMessageShown = 1;
+    if (data.tutorial1.fire) {
+        city_mission_tutorial_set_fire_message_shown(1);
     }
-    if (data.tutorial3.disease && !Data_CityInfo.tutorial3DiseaseMessageShown) {
-        Data_CityInfo.tutorial3DiseaseMessageShown = 1;
+    if (data.tutorial3.disease && city_mission_tutorial_show_disease_message()) {
         post_message(MESSAGE_TUTORIAL_HEALTH);
     }
     if (data.tutorial2.granary_built) {
-        if (!data.tutorial2.population_250_reached && Data_CityInfo.population >= 250) {
+        if (!data.tutorial2.population_250_reached && city_population() >= 250) {
             data.tutorial2.population_250_reached = 1;
-            refresh_buttons();
+            building_menu_update();
             post_message(MESSAGE_TUTORIAL_GROWING_YOUR_CITY);
         }
     }
     if (data.tutorial2.population_250_reached) {
-        if (!data.tutorial2.population_450_reached && Data_CityInfo.population >= 450) {
+        if (!data.tutorial2.population_450_reached && city_population() >= 450) {
             data.tutorial2.population_450_reached = 1;
-            refresh_buttons();
+            building_menu_update();
             post_message(MESSAGE_TUTORIAL_TAXES_INDUSTRY);
         }
     }
     if (data.tutorial1.fire && !data.tutorial1.senate_built) {
-        int population_almost = Data_CityInfo.population >= scenario_criteria_population() - 20;
+        int population_almost = city_population() >= scenario_criteria_population() - 20;
         if (!game_time_day() || population_almost) {
-            if (Data_CityInfo.buildingSenateGridOffset) {
-                Data_CityInfo.tutorial1SenateBuilt++;
+            if (city_buildings_has_senate()) {
+                city_mission_tutorial_add_senate();
             }
-            if (Data_CityInfo.tutorial1SenateBuilt > 0 || population_almost) {
+            if (city_mission_tutorial_has_senate() || population_almost) {
                 data.tutorial1.senate_built = 1;
-                refresh_buttons();
+                building_menu_update();
                 post_message(MESSAGE_TUTORIAL_RELIGION);
             }
         }
     }
 }
 
-void tutorial_on_month_tick()
+void tutorial_on_month_tick(void)
 {
     if (scenario_is_tutorial_3()) {
         if (game_time_month() == 5) {

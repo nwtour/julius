@@ -16,60 +16,60 @@ int map_figure_at(int grid_offset)
 
 void map_figure_add(figure *f)
 {
-    if (f->gridOffset < 0) {
+    if (f->grid_offset < 0) {
         return;
     }
-    f->numPreviousFiguresOnSameTile = 0;
+    f->figures_on_same_tile_index = 0;
 
-    if (figures.items[f->gridOffset]) {
-        figure *next = figure_get(figures.items[f->gridOffset]);
-        f->numPreviousFiguresOnSameTile++;
-        while (next->nextFigureIdOnSameTile) {
-            next = figure_get(next->nextFigureIdOnSameTile);
-            f->numPreviousFiguresOnSameTile++;
+    if (figures.items[f->grid_offset]) {
+        figure *next = figure_get(figures.items[f->grid_offset]);
+        f->figures_on_same_tile_index++;
+        while (next->next_figure_id_on_same_tile) {
+            next = figure_get(next->next_figure_id_on_same_tile);
+            f->figures_on_same_tile_index++;
         }
-        if (f->numPreviousFiguresOnSameTile > 20) {
-            f->numPreviousFiguresOnSameTile = 20;
+        if (f->figures_on_same_tile_index > 20) {
+            f->figures_on_same_tile_index = 20;
         }
-        next->nextFigureIdOnSameTile = f->id;
+        next->next_figure_id_on_same_tile = f->id;
     } else {
-        figures.items[f->gridOffset] = f->id;
+        figures.items[f->grid_offset] = f->id;
     }
 }
 
 void map_figure_update(figure *f)
 {
-    f->numPreviousFiguresOnSameTile = 0;
+    f->figures_on_same_tile_index = 0;
 
-    figure *next = figure_get(figures.items[f->gridOffset]);
+    figure *next = figure_get(figures.items[f->grid_offset]);
     while (next->id) {
         if (next->id == f->id) {
             return;
         }
-        f->numPreviousFiguresOnSameTile++;
-        next = figure_get(next->nextFigureIdOnSameTile);
+        f->figures_on_same_tile_index++;
+        next = figure_get(next->next_figure_id_on_same_tile);
     }
-    if (f->numPreviousFiguresOnSameTile > 20) {
-        f->numPreviousFiguresOnSameTile = 20;
+    if (f->figures_on_same_tile_index > 20) {
+        f->figures_on_same_tile_index = 20;
     }
 }
 
 void map_figure_delete(figure *f)
 {
-    if (f->gridOffset < 0 || !figures.items[f->gridOffset]) {
+    if (f->grid_offset < 0 || !figures.items[f->grid_offset]) {
         return;
     }
 
-    if (figures.items[f->gridOffset] == f->id) {
-        figures.items[f->gridOffset] = f->nextFigureIdOnSameTile;
+    if (figures.items[f->grid_offset] == f->id) {
+        figures.items[f->grid_offset] = f->next_figure_id_on_same_tile;
     } else {
-        figure *prev = figure_get(figures.items[f->gridOffset]);
-        while (prev->id && prev->nextFigureIdOnSameTile != f->id) {
-            prev = figure_get(prev->nextFigureIdOnSameTile);
+        figure *prev = figure_get(figures.items[f->grid_offset]);
+        while (prev->id && prev->next_figure_id_on_same_tile != f->id) {
+            prev = figure_get(prev->next_figure_id_on_same_tile);
         }
-        prev->nextFigureIdOnSameTile = f->nextFigureIdOnSameTile;
+        prev->next_figure_id_on_same_tile = f->next_figure_id_on_same_tile;
     }
-    f->nextFigureIdOnSameTile = 0;
+    f->next_figure_id_on_same_tile = 0;
 }
 
 int map_figure_foreach_until(int grid_offset, int (*callback)(figure *f))
@@ -82,13 +82,13 @@ int map_figure_foreach_until(int grid_offset, int (*callback)(figure *f))
             if (result) {
                 return result;
             }
-            figure_id = f->nextFigureIdOnSameTile;
+            figure_id = f->next_figure_id_on_same_tile;
         }
     }
     return 0;
 }
 
-void map_figure_clear()
+void map_figure_clear(void)
 {
     map_grid_clear_u16(figures.items);
 }

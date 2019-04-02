@@ -1,16 +1,15 @@
 #include "message.h"
 
+#include "core/calc.h"
 #include "core/file.h"
 #include "core/lang.h"
 #include "core/string.h"
 #include "core/time.h"
+#include "figure/formation.h"
 #include "game/time.h"
+#include "graphics/window.h"
 #include "sound/effect.h"
-
-#include "Formation.h"
-#include "UI/Tooltip.h"
-#include "UI/MessageDialog.h"
-#include "UI/Window.h"
+#include "window/message_dialog.h"
 
 #define MAX_MESSAGES 1000
 #define MAX_QUEUE 20
@@ -46,11 +45,14 @@ static struct {
     int problem_count;
     int problem_index;
     time_millis problem_last_click_time;
+
+    int scroll_position;
+    int max_scroll_position;
 } data;
 
 static int should_play_sound = 1;
 
-void city_message_init_scenario()
+void city_message_init_scenario(void)
 {
     for (int i = 0; i < MAX_MESSAGES; i++) {
         data.messages[i].message_type = 0;
@@ -86,14 +88,14 @@ void city_message_init_scenario()
     city_message_init_problem_areas();
 }
 
-void city_message_init_problem_areas()
+void city_message_init_problem_areas(void)
 {
     data.problem_count = 0;
     data.problem_index = 0;
     data.problem_last_click_time = time_get_millis();
 }
 
-static int new_message_id()
+static int new_message_id(void)
 {
     for (int i = 0; i < MAX_MESSAGES; i++) {
         if (!data.messages[i].message_type) {
@@ -103,9 +105,9 @@ static int new_message_id()
     return -1;
 }
 
-static int has_video(int textId)
+static int has_video(int text_id)
 {
-    const lang_message *msg = lang_get_message(textId);
+    const lang_message *msg = lang_get_message(text_id);
     if (!msg->video.text) {
         return 0;
     }
@@ -137,17 +139,15 @@ static void show_message_popup(int message_id)
     data.consecutive_message_delay = 5;
     msg->is_read = 1;
     int text_id = city_message_get_text_id(msg->message_type);
-    UI_Tooltip_resetTimer();
     if (!has_video(text_id)) {
         play_sound(text_id);
     }
-    UI_MessageDialog_setPlayerMessage(
+    window_message_dialog_show_city_message(text_id,
         msg->year, msg->month, msg->param1, msg->param2,
         city_message_get_advisor(msg->message_type), 1);
-    UI_MessageDialog_show(text_id, 0);
 }
 
-void city_message_disable_sound_for_next_message()
+void city_message_disable_sound_for_next_message(void)
 {
     should_play_sound = 0;
 }
@@ -155,7 +155,7 @@ void city_message_disable_sound_for_next_message()
 void city_message_apply_sound_interval(message_category category)
 {
     time_millis now = time_get_millis();
-    if (now <= 15000 + data.last_sound_time[category]) {
+    if (now - data.last_sound_time[category] <= 15000) {
         city_message_disable_sound_for_next_message();
     } else {
         data.last_sound_time[category] = now;
@@ -181,12 +181,12 @@ void city_message_post(int use_popup, int message_type, int param1, int param2)
     msg->sequence = data.next_message_sequence++;
 
     int text_id = city_message_get_text_id(message_type);
-    lang_message_type langMessageType = lang_get_message(text_id)->message_type;
-    if (langMessageType == MESSAGE_TYPE_DISASTER || langMessageType == MESSAGE_TYPE_INVASION) {
+    lang_message_type lang_msg_type = lang_get_message(text_id)->message_type;
+    if (lang_msg_type == MESSAGE_TYPE_DISASTER || lang_msg_type == MESSAGE_TYPE_INVASION) {
         data.problem_count = 1;
-        UI_Window_requestRefresh();
+        window_invalidate();
     }
-    if (use_popup && UI_Window_getId() == Window_City) {
+    if (use_popup && window_is(WINDOW_CITY)) {
         show_message_popup(id);
     } else if (use_popup) {
         // add to queue to be processed when player returns to city
@@ -227,7 +227,7 @@ void city_message_post_with_message_delay(message_category category, int use_pop
     }
 }
 
-void city_message_process_queue()
+void city_message_process_queue(void)
 {
     if (data.consecutive_message_delay > 0) {
         data.consecutive_message_delay--;
@@ -260,9 +260,8 @@ void city_message_process_queue()
 }
 
 
-void city_message_sort_and_compact()
+void city_message_sort_and_compact(void)
 {
-    city_message tmp_message;
     for (int i = 0; i < MAX_MESSAGES; i++) {
         for (int a = 0; a < MAX_MESSAGES - 1; a++) {
             int swap = 0;
@@ -276,7 +275,7 @@ void city_message_sort_and_compact()
                 swap = 1;
             }
             if (swap) {
-                tmp_message = data.messages[a];
+                city_message tmp_message = data.messages[a];
                 data.messages[a] = data.messages[a+1];
                 data.messages[a+1] = tmp_message;
             }
@@ -353,7 +352,7 @@ int city_message_get_category_count(message_category category)
     return data.message_count[category];
 }
 
-void city_message_decrease_delays()
+void city_message_decrease_delays(void)
 {
     for (int i = 0; i < MAX_MESSAGE_CATEGORIES; i++) {
         if (data.message_delay[i] > 0) {
@@ -364,7 +363,7 @@ void city_message_decrease_delays()
 
 int city_message_mark_population_shown(int population)
 {
-    int *field = 0;
+    int *field;
     switch (population) {
         case 500: field = &data.population_shown.pop500; break;
         case 1000: field = &data.population_shown.pop1000; break;
@@ -375,8 +374,9 @@ int city_message_mark_population_shown(int population)
         case 15000: field = &data.population_shown.pop15000; break;
         case 20000: field = &data.population_shown.pop20000; break;
         case 25000: field = &data.population_shown.pop25000; break;
+        default: return 0;
     }
-    if (field && !*field) {
+    if (!*field) {
         *field = 1;
         return 1;
     }
@@ -404,17 +404,17 @@ void city_message_delete(int message_id)
     city_message_sort_and_compact();
 }
 
-int city_message_count()
+int city_message_count(void)
 {
     return data.total_messages;
 }
 
-int city_message_problem_area_count()
+int city_message_problem_area_count(void)
 {
     return data.problem_count;
 }
 
-int city_message_next_problem_area_grid_offset()
+int city_message_next_problem_area_grid_offset(void)
 {
     time_millis now = time_get_millis();
     if (now - data.problem_last_click_time > 3000) {
@@ -428,9 +428,9 @@ int city_message_next_problem_area_grid_offset()
         city_message *msg = &data.messages[i];
         if (msg->message_type && msg->year >= game_time_year() - 1) {
             const lang_message *lang_msg = lang_get_message(city_message_get_text_id(msg->message_type));
-            lang_message_type lang_message_type = lang_msg->message_type;
-            if (lang_message_type == MESSAGE_TYPE_DISASTER || lang_message_type == MESSAGE_TYPE_INVASION) {
-                if (lang_message_type != MESSAGE_TYPE_INVASION || Formation_getInvasionGridOffset(msg->param1) > 0) {
+            lang_message_type lang_msg_type = lang_msg->message_type;
+            if (lang_msg_type == MESSAGE_TYPE_DISASTER || lang_msg_type == MESSAGE_TYPE_INVASION) {
+                if (lang_msg_type != MESSAGE_TYPE_INVASION || formation_grid_offset_for_invasion(msg->param1) > 0) {
                     data.problem_count++;
                 }
             }
@@ -449,23 +449,82 @@ int city_message_next_problem_area_grid_offset()
         city_message *msg = &data.messages[i];
         if (msg->message_type && msg->year >= current_year - 1) {
             int text_id = city_message_get_text_id(msg->message_type);
-            lang_message_type langMessageType = lang_get_message(text_id)->message_type;
-            if (langMessageType == MESSAGE_TYPE_DISASTER || langMessageType == MESSAGE_TYPE_INVASION) {
-                if (langMessageType != MESSAGE_TYPE_INVASION || Formation_getInvasionGridOffset(msg->param1) > 0) {
+            lang_message_type lang_msg_type = lang_get_message(text_id)->message_type;
+            if (lang_msg_type == MESSAGE_TYPE_DISASTER || lang_msg_type == MESSAGE_TYPE_INVASION) {
+                if (lang_msg_type != MESSAGE_TYPE_INVASION || formation_grid_offset_for_invasion(msg->param1) > 0) {
                     index++;
                     if (data.problem_index < index) {
                         data.problem_index++;
-                        int gridOffset = msg->param2;
-                        if (langMessageType == MESSAGE_TYPE_INVASION) {
-                            gridOffset = Formation_getInvasionGridOffset(msg->param1);
+                        int grid_offset = msg->param2;
+                        if (lang_msg_type == MESSAGE_TYPE_INVASION) {
+                            grid_offset = formation_grid_offset_for_invasion(msg->param1);
                         }
-                        return gridOffset;
+                        return grid_offset;
                     }
                 }
             }
         }
     }
     return 0;
+}
+
+void city_message_clear_scroll(void)
+{
+    data.scroll_position = data.max_scroll_position = 0;
+}
+
+void city_message_update_scroll(int max_messages)
+{
+    if (data.total_messages <= max_messages) {
+        data.scroll_position = 0;
+        data.max_scroll_position = 0;
+    } else {
+        data.max_scroll_position = data.total_messages - max_messages;
+        if (data.scroll_position >= data.max_scroll_position) {
+            data.scroll_position = data.max_scroll_position;
+        }
+    }
+}
+
+int city_message_can_scroll(void)
+{
+    return data.max_scroll_position > 0;
+}
+
+int city_message_scroll_position(void)
+{
+    return data.scroll_position;
+}
+
+void city_message_scroll(int is_down, int amount)
+{
+    if (is_down) {
+        data.scroll_position += amount;
+        if (data.scroll_position > data.max_scroll_position) {
+            data.scroll_position = data.max_scroll_position;
+        }
+    } else {
+        data.scroll_position -= amount;
+        if (data.scroll_position < 0) {
+            data.scroll_position = 0;
+        }
+    }
+}
+
+int city_message_scroll_percentage(void)
+{
+    if (data.scroll_position <= 0) {
+        return 0;
+    } else if (data.scroll_position >= data.max_scroll_position) {
+        return 100;
+    } else {
+        return calc_percentage(data.scroll_position, data.max_scroll_position);
+    }
+}
+
+void city_message_set_scroll_percentage(int percentage)
+{
+    data.scroll_position = calc_adjust_with_percentage(data.max_scroll_position, percentage);
 }
 
 void city_message_save_state(buffer *messages, buffer *extra, buffer *counts, buffer *delays, buffer *population)

@@ -2,6 +2,9 @@
 
 #define MAX_ENEMY_ARMIES 25
 
+#include "figure/formation.h"
+#include "map/soldier_strength.h"
+
 static enemy_army enemy_armies[MAX_ENEMY_ARMIES];
 
 static struct {
@@ -13,7 +16,7 @@ static struct {
     int days_since_roman_influence_calculation;
 } totals;
 
-void enemy_armies_clear()
+void enemy_armies_clear(void)
 {
     for (int i = 0; i < MAX_ENEMY_ARMIES; i++) {
         enemy_armies[i].formation_id = 0;
@@ -42,14 +45,14 @@ enemy_army *enemy_army_get_editable(int invasion_id)
     return &enemy_armies[invasion_id];
 }
 
-void enemy_armies_clear_ignore_roman_soldiers()
+void enemy_armies_clear_ignore_roman_soldiers(void)
 {
     for (int i = 0; i < MAX_ENEMY_ARMIES; i++) {
         enemy_armies[i].ignore_roman_soldiers = 0;
     }
 }
 
-void enemy_armies_clear_formations()
+void enemy_armies_clear_formations(void)
 {
     for (int i = 0; i < MAX_ENEMY_ARMIES; i++) {
         enemy_armies[i].formation_id = 0;
@@ -57,7 +60,7 @@ void enemy_armies_clear_formations()
     }
 }
 
-void enemy_army_totals_clear()
+void enemy_army_totals_clear(void)
 {
     totals.legion_formations = 0;
     totals.legion_strength = 0;
@@ -77,22 +80,47 @@ void enemy_army_totals_add_enemy_formation(int strength)
     totals.enemy_strength += strength;
 }
 
-int enemy_army_total_enemy_formations()
+int enemy_army_total_enemy_formations(void)
 {
     return totals.enemy_formations;
 }
 
-int enemy_army_totals_should_calculate_roman_influence()
+void enemy_army_calculate_roman_influence(void)
 {
     totals.days_since_roman_influence_calculation++;
     if (totals.days_since_roman_influence_calculation > 4) {
         totals.days_since_roman_influence_calculation = 0;
-        return 1;
+    } else {
+        return;
     }
-    return 0;
+    map_soldier_strength_clear();
+    for (int i = 1; i <= MAX_LEGIONS; i++) {
+        const formation *m = formation_get(i);
+        if (m->in_use != 1 || !m->is_legion) {
+            continue;
+        }
+        if (m->num_figures > 0) {
+            map_soldier_strength_add(m->x_home, m->y_home, 7, 1);
+        }
+        if (m->num_figures > 3) {
+            map_soldier_strength_add(m->x_home, m->y_home, 6, 1);
+        }
+        if (m->num_figures > 6) {
+            map_soldier_strength_add(m->x_home, m->y_home, 5, 1);
+        }
+        if (m->num_figures > 9) {
+            map_soldier_strength_add(m->x_home, m->y_home, 4, 1);
+        }
+        if (m->num_figures > 12) {
+            map_soldier_strength_add(m->x_home, m->y_home, 3, 1);
+        }
+        if (m->num_figures > 15) {
+            map_soldier_strength_add(m->x_home, m->y_home, 2, 1);
+        }
+    }
 }
 
-int enemy_army_is_stronger_than_legions()
+int enemy_army_is_stronger_than_legions(void)
 {
     return totals.enemy_strength > 2 * totals.legion_strength;
 }

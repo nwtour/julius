@@ -1,15 +1,14 @@
 #include "bookmark.h"
 
+#include "city/view.h"
 #include "map/grid.h"
 #include "map/point.h"
-
-#include "Data/State.h"
 
 #define MAX_BOOKMARKS 4
 
 static map_point bookmarks[MAX_BOOKMARKS];
 
-void map_bookmarks_clear()
+void map_bookmarks_clear(void)
 {
     for (int i = 0; i < MAX_BOOKMARKS; i++) {
         bookmarks[i].x = -1;
@@ -20,8 +19,7 @@ void map_bookmarks_clear()
 void map_bookmark_save(int number)
 {
     if (number >= 0 && number < MAX_BOOKMARKS) {
-        bookmarks[number].x = Data_State.map.camera.x;
-        bookmarks[number].y = Data_State.map.camera.y;
+        city_view_get_camera(&bookmarks[number].x, &bookmarks[number].y);
     }
 }
 
@@ -31,8 +29,7 @@ int map_bookmark_go_to(int number)
         int x = bookmarks[number].x;
         int y = bookmarks[number].y;
         if (x > -1 && map_grid_offset(x, y) > -1) {
-            Data_State.map.camera.x = x;
-            Data_State.map.camera.y = y;
+            city_view_set_camera(x, y);
             return 1;
         }
     }

@@ -1,8 +1,8 @@
 #include "music.h"
 
-#include "Data/CityInfo.h"
-
 #include "core/dir.h"
+#include "city/figures.h"
+#include "city/population.h"
 #include "game/settings.h"
 #include "sound/device.h"
 
@@ -48,20 +48,20 @@ static void play_track(int track)
     data.current_track = track;
 }
 
-void sound_music_play_intro()
+void sound_music_play_intro(void)
 {
     if (setting_sound(SOUND_MUSIC)->enabled) {
         play_track(TRACK_INTRO);
     }
 }
 
-void sound_music_reset()
+void sound_music_reset(void)
 {
     data.current_track = TRACK_NONE;
     data.next_check = 0;
 }
 
-void sound_music_update()
+void sound_music_update(void)
 {
     if (data.next_check) {
         --data.next_check;
@@ -70,18 +70,20 @@ void sound_music_update()
     if (!setting_sound(SOUND_MUSIC)->enabled) {
         return;
     }
-    int track = TRACK_NONE;
-    if (Data_CityInfo.numEnemiesInCity + Data_CityInfo.numImperialSoldiersInCity >= 32) {
+    int track;
+    int population = city_population();
+    int total_enemies = city_figures_total_invading_enemies();
+    if (total_enemies >= 32) {
         track = TRACK_COMBAT_LONG;
-    } else if (Data_CityInfo.numEnemiesInCity + Data_CityInfo.numImperialSoldiersInCity > 0) {
+    } else if (total_enemies > 0) {
         track = TRACK_COMBAT_SHORT;
-    } else if (Data_CityInfo.population < 1000) {
+    } else if (population < 1000) {
         track = TRACK_CITY_1;
-    } else if (Data_CityInfo.population < 2000) {
+    } else if (population < 2000) {
         track = TRACK_CITY_2;
-    } else if (Data_CityInfo.population < 5000) {
+    } else if (population < 5000) {
         track = TRACK_CITY_3;
-    } else if (Data_CityInfo.population < 7000) {
+    } else if (population < 7000) {
         track = TRACK_CITY_4;
     } else {
         track = TRACK_CITY_5;
@@ -95,7 +97,7 @@ void sound_music_update()
     data.next_check = 10;
 }
 
-void sound_music_stop()
+void sound_music_stop(void)
 {
     sound_device_stop_music();
     data.current_track = TRACK_NONE;

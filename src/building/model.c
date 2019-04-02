@@ -1,7 +1,7 @@
 #include "building/model.h"
 
-#include "core/debug.h"
 #include "core/io.h"
+#include "core/log.h"
 #include "core/string.h"
 
 #include <stdlib.h>
@@ -18,7 +18,7 @@ static const uint8_t ALL_HOUSES[] = {'A', 'L', 'L', ' ', 'H', 'O', 'U', 'S', 'E'
 static model_building buildings[NUM_BUILDINGS];
 static model_house houses[NUM_HOUSES];
 
-static int strings_equal(const uint8_t *a, const uint8_t *b, size_t len)
+static int strings_equal(const uint8_t *a, const uint8_t *b, int len)
 {
     for (int i = 0; i < len; i++, a++, b++) {
         if (*a != *b) {
@@ -30,7 +30,7 @@ static int strings_equal(const uint8_t *a, const uint8_t *b, size_t len)
 
 static int index_of_string(const uint8_t *haystack, const uint8_t *needle, int haystack_length)
 {
-    size_t needle_length = string_length(needle);
+    int needle_length = string_length(needle);
     for (int i = 0; i < haystack_length; i++) {
         if (haystack[i] == needle[0] && strings_equal(&haystack[i], needle, needle_length)) {
             return i + 1;
@@ -65,25 +65,25 @@ static const uint8_t *skip_non_digits(const uint8_t *str)
 }
 
 
-static const uint8_t *get_value(const uint8_t *ptr, int filesize, int *value)
+static const uint8_t *get_value(const uint8_t *ptr, const uint8_t *end_ptr, int *value)
 {
     ptr = skip_non_digits(ptr);
     *value = string_to_int(ptr);
-    ptr += index_of(ptr, ',', filesize);
+    ptr += index_of(ptr, ',', end_ptr - ptr);
     return ptr;
 }
 
-int model_load()
+int model_load(void)
 {
     uint8_t *buffer = (uint8_t *) malloc(TMP_BUFFER_SIZE);
     if (!buffer) {
-        debug_log("ERR:no spare memory for model", 0, 0);
+        log_error("no spare memory for model", 0, 0);
         return 0;
     }
     memset(buffer, 0, TMP_BUFFER_SIZE);
     int filesize = io_read_file_into_buffer("c3_model.txt", buffer, TMP_BUFFER_SIZE);
     if (filesize == 0) {
-        debug_log("ERR:no c3_model.txt file", 0, 0);
+        log_error("no c3_model.txt file", 0, 0);
         free(buffer);
         return 0;
     }
@@ -102,24 +102,25 @@ int model_load()
     } while (brace_index && guard > 0);
 
     if (num_lines != NUM_BUILDINGS + NUM_HOUSES) {
-        debug_log("ERR:model has incorrect no of lines ", 0, num_lines + 1);
+        log_error("model has incorrect no of lines ", 0, num_lines + 1);
         free(buffer);
         return 0;
     }
 
     int dummy;
     ptr = &buffer[index_of_string(buffer, ALL_BUILDINGS, filesize)];
+    const uint8_t *end_ptr = &buffer[filesize];
     for (int i = 0; i < NUM_BUILDINGS; i++) {
         ptr += index_of(ptr, '{', filesize);
 
-        ptr = get_value(ptr, filesize, &buildings[i].cost);
-        ptr = get_value(ptr, filesize, &buildings[i].desirability_value);
-        ptr = get_value(ptr, filesize, &buildings[i].desirability_step);
-        ptr = get_value(ptr, filesize, &buildings[i].desirability_step_size);
-        ptr = get_value(ptr, filesize, &buildings[i].desirability_range);
-        ptr = get_value(ptr, filesize, &buildings[i].laborers);
-        ptr = get_value(ptr, filesize, &dummy);
-        ptr = get_value(ptr, filesize, &dummy);
+        ptr = get_value(ptr, end_ptr, &buildings[i].cost);
+        ptr = get_value(ptr, end_ptr, &buildings[i].desirability_value);
+        ptr = get_value(ptr, end_ptr, &buildings[i].desirability_step);
+        ptr = get_value(ptr, end_ptr, &buildings[i].desirability_step_size);
+        ptr = get_value(ptr, end_ptr, &buildings[i].desirability_range);
+        ptr = get_value(ptr, end_ptr, &buildings[i].laborers);
+        ptr = get_value(ptr, end_ptr, &dummy);
+        ptr = get_value(ptr, end_ptr, &dummy);
     }
 
     ptr = &buffer[index_of_string(buffer, ALL_HOUSES, filesize)];
@@ -127,29 +128,29 @@ int model_load()
     for (int i = 0; i < NUM_HOUSES; i++) {
         ptr += index_of(ptr, '{', filesize);
 
-        ptr = get_value(ptr, filesize, &houses[i].devolve_desirability);
-        ptr = get_value(ptr, filesize, &houses[i].evolve_desirability);
-        ptr = get_value(ptr, filesize, &houses[i].entertainment);
-        ptr = get_value(ptr, filesize, &houses[i].water);
-        ptr = get_value(ptr, filesize, &houses[i].religion);
-        ptr = get_value(ptr, filesize, &houses[i].education);
-        ptr = get_value(ptr, filesize, &houses[i].food);
-        ptr = get_value(ptr, filesize, &houses[i].barber);
-        ptr = get_value(ptr, filesize, &houses[i].bathhouse);
-        ptr = get_value(ptr, filesize, &houses[i].health);
-        ptr = get_value(ptr, filesize, &houses[i].food_types);
-        ptr = get_value(ptr, filesize, &houses[i].pottery);
-        ptr = get_value(ptr, filesize, &houses[i].oil);
-        ptr = get_value(ptr, filesize, &houses[i].furniture);
-        ptr = get_value(ptr, filesize, &houses[i].wine);
-        ptr = get_value(ptr, filesize, &dummy);
-        ptr = get_value(ptr, filesize, &dummy);
-        ptr = get_value(ptr, filesize, &houses[i].prosperity);
-        ptr = get_value(ptr, filesize, &houses[i].max_people);
-        ptr = get_value(ptr, filesize, &houses[i].tax_multiplier);
+        ptr = get_value(ptr, end_ptr, &houses[i].devolve_desirability);
+        ptr = get_value(ptr, end_ptr, &houses[i].evolve_desirability);
+        ptr = get_value(ptr, end_ptr, &houses[i].entertainment);
+        ptr = get_value(ptr, end_ptr, &houses[i].water);
+        ptr = get_value(ptr, end_ptr, &houses[i].religion);
+        ptr = get_value(ptr, end_ptr, &houses[i].education);
+        ptr = get_value(ptr, end_ptr, &houses[i].food);
+        ptr = get_value(ptr, end_ptr, &houses[i].barber);
+        ptr = get_value(ptr, end_ptr, &houses[i].bathhouse);
+        ptr = get_value(ptr, end_ptr, &houses[i].health);
+        ptr = get_value(ptr, end_ptr, &houses[i].food_types);
+        ptr = get_value(ptr, end_ptr, &houses[i].pottery);
+        ptr = get_value(ptr, end_ptr, &houses[i].oil);
+        ptr = get_value(ptr, end_ptr, &houses[i].furniture);
+        ptr = get_value(ptr, end_ptr, &houses[i].wine);
+        ptr = get_value(ptr, end_ptr, &dummy);
+        ptr = get_value(ptr, end_ptr, &dummy);
+        ptr = get_value(ptr, end_ptr, &houses[i].prosperity);
+        ptr = get_value(ptr, end_ptr, &houses[i].max_people);
+        ptr = get_value(ptr, end_ptr, &houses[i].tax_multiplier);
     }
 
-    debug_log(" OK: model loaded", 0, 0);
+    log_info("model loaded", 0, 0);
     free(buffer);
     return 1;
 }

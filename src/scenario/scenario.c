@@ -522,7 +522,7 @@ void scenario_load_state(buffer *buf)
     buffer_skip(buf, 1);
 }
 
-void scenario_settings_init()
+void scenario_settings_init(void)
 {
     scenario.settings.campaign_mission = 0;
     scenario.settings.campaign_rank = 0;
@@ -531,13 +531,13 @@ void scenario_settings_init()
     scenario.settings.starting_personal_savings = 0;
 }
 
-void scenario_settings_init_mission()
+void scenario_settings_init_mission(void)
 {
     scenario.settings.starting_favor = difficulty_starting_favor();
     scenario.settings.starting_personal_savings = setting_personal_savings_for_mission(scenario.settings.campaign_rank);
 }
 
-void scenario_settings_save_state(buffer *part1, buffer *part2, buffer *part3, buffer *player_name)
+void scenario_settings_save_state(buffer *part1, buffer *part2, buffer *part3, buffer *player_name, buffer *scenario_name)
 {
     buffer_write_i32(part1, scenario.settings.campaign_mission);
 
@@ -551,9 +551,10 @@ void scenario_settings_save_state(buffer *part1, buffer *part2, buffer *part3, b
         buffer_write_u8(player_name, 0);
     }
     buffer_write_raw(player_name, scenario.settings.player_name, MAX_PLAYER_NAME);
+    buffer_write_raw(scenario_name, scenario.scenario_name, MAX_SCENARIO_NAME);
 }
 
-void scenario_settings_load_state(buffer *part1, buffer *part2, buffer *part3, buffer *player_name)
+void scenario_settings_load_state(buffer *part1, buffer *part2, buffer *part3, buffer *player_name, buffer *scenario_name)
 {
     scenario.settings.campaign_mission = buffer_read_i32(part1);
 
@@ -565,4 +566,5 @@ void scenario_settings_load_state(buffer *part1, buffer *part2, buffer *part3, b
 
     buffer_skip(player_name, MAX_PLAYER_NAME);
     buffer_read_raw(player_name, scenario.settings.player_name, MAX_PLAYER_NAME);
+    buffer_read_raw(scenario_name, scenario.scenario_name, MAX_SCENARIO_NAME);
 }

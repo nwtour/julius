@@ -1,27 +1,28 @@
 #include "routing_terrain.h"
 
-#include "building/type.h"
+#include "building/building.h"
+#include "city/view.h"
 #include "core/direction.h"
-#include "graphics/image.h"
+#include "core/image.h"
 #include "map/building.h"
-#include "map/grid.h"
+#include "map/data.h"
+#include "map/image.h"
 #include "map/property.h"
 #include "map/random.h"
 #include "map/routing_data.h"
+#include "map/sprite.h"
+#include "map/terrain.h"
 
-#include "Data/Building.h"
-#include "Data/State.h"
+static void map_routing_update_land_noncitizen(void);
 
-static void map_routing_update_land_noncitizen();
-
-void map_routing_update_all()
+void map_routing_update_all(void)
 {
     map_routing_update_land();
     map_routing_update_water();
     map_routing_update_walls();
 }
 
-void map_routing_update_land()
+void map_routing_update_land(void)
 {
     map_routing_update_land_citizen();
     map_routing_update_land_noncitizen();
@@ -29,9 +30,9 @@ void map_routing_update_land()
 
 static int get_land_type_citizen_building(int grid_offset)
 {
-    int building_id = map_building_at(grid_offset);
+    building *b = building_get(map_building_at(grid_offset));
     int type = CITIZEN_N1_BLOCKED;
-    switch (Data_Buildings[building_id].type) {
+    switch (b->type) {
         case BUILDING_WAREHOUSE:
         case BUILDING_GATEHOUSE:
             type = CITIZEN_0_ROAD;
@@ -40,19 +41,19 @@ static int get_land_type_citizen_building(int grid_offset)
             type = CITIZEN_2_PASSABLE_TERRAIN;
             break;
         case BUILDING_TRIUMPHAL_ARCH:
-            if (Data_Buildings[building_id].subtype.orientation == 3) {
+            if (b->subtype.orientation == 3) {
                 switch (map_property_multi_tile_xy(grid_offset)) {
-                    case Edge_X0Y1:
-                    case Edge_X1Y1:
-                    case Edge_X2Y1:
+                    case EDGE_X0Y1:
+                    case EDGE_X1Y1:
+                    case EDGE_X2Y1:
                         type = CITIZEN_0_ROAD;
                         break;
                 }
             } else {
                 switch (map_property_multi_tile_xy(grid_offset)) {
-                    case Edge_X1Y0:
-                    case Edge_X1Y1:
-                    case Edge_X1Y2:
+                    case EDGE_X1Y0:
+                    case EDGE_X1Y1:
+                    case EDGE_X1Y2:
                         type = CITIZEN_0_ROAD;
                         break;
                 }
@@ -60,21 +61,21 @@ static int get_land_type_citizen_building(int grid_offset)
             break;
         case BUILDING_GRANARY:
             switch (map_property_multi_tile_xy(grid_offset)) {
-                case Edge_X1Y0:
-                case Edge_X0Y1:
-                case Edge_X1Y1:
-                case Edge_X2Y1:
-                case Edge_X1Y2:
+                case EDGE_X1Y0:
+                case EDGE_X0Y1:
+                case EDGE_X1Y1:
+                case EDGE_X2Y1:
+                case EDGE_X1Y2:
                     type = CITIZEN_0_ROAD;
                     break;
             }
             break;
         case BUILDING_RESERVOIR:
             switch (map_property_multi_tile_xy(grid_offset)) {
-                case Edge_X1Y0:
-                case Edge_X0Y1:
-                case Edge_X2Y1:
-                case Edge_X1Y2:
+                case EDGE_X1Y0:
+                case EDGE_X0Y1:
+                case EDGE_X2Y1:
+                case EDGE_X1Y2:
                     type = CITIZEN_N4_RESERVOIR_CONNECTOR; // aqueduct connect points
                     break;
             }
@@ -85,50 +86,51 @@ static int get_land_type_citizen_building(int grid_offset)
 
 static int get_land_type_citizen_aqueduct(int grid_offset)
 {
-    int graphicId = Data_Grid_graphicIds[grid_offset] - image_group(GROUP_BUILDING_AQUEDUCT);
-    if (graphicId <= 3) {
+    int image_id = map_image_at(grid_offset) - image_group(GROUP_BUILDING_AQUEDUCT);
+    if (image_id <= 3) {
         return CITIZEN_N3_AQUEDUCT;
-    } else if (graphicId <= 7) {
+    } else if (image_id <= 7) {
         return CITIZEN_N1_BLOCKED;
-    } else if (graphicId <= 9) {
+    } else if (image_id <= 9) {
         return CITIZEN_N3_AQUEDUCT;
-    } else if (graphicId <= 14) {
+    } else if (image_id <= 14) {
         return CITIZEN_N1_BLOCKED;
-    } else if (graphicId <= 18) {
+    } else if (image_id <= 18) {
         return CITIZEN_N3_AQUEDUCT;
-    } else if (graphicId <= 22) {
+    } else if (image_id <= 22) {
         return CITIZEN_N1_BLOCKED;
-    } else if (graphicId <= 24) {
+    } else if (image_id <= 24) {
         return CITIZEN_N3_AQUEDUCT;
     } else {
         return CITIZEN_N1_BLOCKED;
     }
 }
 
-void map_routing_update_land_citizen()
+void map_routing_update_land_citizen(void)
 {
     map_grid_init_i8(terrain_land_citizen.items, -1);
-    int grid_offset = Data_State.map.gridStartOffset;
-    for (int y = 0; y < Data_State.map.height; y++, grid_offset += Data_State.map.gridBorderSize) {
-        for (int x = 0; x < Data_State.map.width; x++, grid_offset++) {
-            if (Data_Grid_terrain[grid_offset] & Terrain_Road) {
+    int grid_offset = map_data.start_offset;
+    for (int y = 0; y < map_data.height; y++, grid_offset += map_data.border_size) {
+        for (int x = 0; x < map_data.width; x++, grid_offset++) {
+            int terrain = map_terrain_get(grid_offset);
+            if (terrain & TERRAIN_ROAD) {
                 terrain_land_citizen.items[grid_offset] = CITIZEN_0_ROAD;
-            } else if (Data_Grid_terrain[grid_offset] & (Terrain_Rubble | Terrain_AccessRamp | Terrain_Garden)) {
+            } else if (terrain & (TERRAIN_RUBBLE | TERRAIN_ACCESS_RAMP | TERRAIN_GARDEN)) {
                 terrain_land_citizen.items[grid_offset] = CITIZEN_2_PASSABLE_TERRAIN;
-            } else if (Data_Grid_terrain[grid_offset] & (Terrain_Building | Terrain_Gatehouse)) {
+            } else if (terrain & (TERRAIN_BUILDING | TERRAIN_GATEHOUSE)) {
                 if (!map_building_at(grid_offset)) {
                     // shouldn't happen
                     terrain_land_noncitizen.items[grid_offset] = CITIZEN_4_CLEAR_TERRAIN; // BUG: should be citizen grid?
-                    Data_Grid_terrain[grid_offset] &= ~Terrain_Building;
-                    Data_Grid_graphicIds[grid_offset] = (map_random_get(grid_offset) & 7) + image_group(GROUP_TERRAIN_GRASS_1);
+                    map_terrain_remove(grid_offset, TERRAIN_BUILDING);
+                    map_image_set(grid_offset, (map_random_get(grid_offset) & 7) + image_group(GROUP_TERRAIN_GRASS_1));
                     map_property_mark_draw_tile(grid_offset);
                     map_property_set_multi_tile_size(grid_offset, 1);
                     continue;
                 }
                 terrain_land_citizen.items[grid_offset] = get_land_type_citizen_building(grid_offset);
-            } else if (Data_Grid_terrain[grid_offset] & Terrain_Aqueduct) {
+            } else if (terrain & TERRAIN_AQUEDUCT) {
                 terrain_land_citizen.items[grid_offset] = get_land_type_citizen_aqueduct(grid_offset);
-            } else if (Data_Grid_terrain[grid_offset] & Terrain_NotClear) {
+            } else if (terrain & TERRAIN_NOT_CLEAR) {
                 terrain_land_citizen.items[grid_offset] = CITIZEN_N1_BLOCKED;
             } else {
                 terrain_land_citizen.items[grid_offset] = CITIZEN_4_CLEAR_TERRAIN;
@@ -140,7 +142,7 @@ void map_routing_update_land_citizen()
 static int get_land_type_noncitizen(int grid_offset)
 {
     int type = NONCITIZEN_1_BUILDING;
-    switch (Data_Buildings[map_building_at(grid_offset)].type) {
+    switch (building_get(map_building_at(grid_offset))->type) {
         case BUILDING_WAREHOUSE:
         case BUILDING_FORT_GROUND:
             type = NONCITIZEN_0_PASSABLE;
@@ -156,11 +158,11 @@ static int get_land_type_noncitizen(int grid_offset)
             break;
         case BUILDING_GRANARY:
             switch (map_property_multi_tile_xy(grid_offset)) {
-                case Edge_X1Y0:
-                case Edge_X0Y1:
-                case Edge_X1Y1:
-                case Edge_X2Y1:
-                case Edge_X1Y2:
+                case EDGE_X1Y0:
+                case EDGE_X0Y1:
+                case EDGE_X1Y1:
+                case EDGE_X2Y1:
+                case EDGE_X1Y2:
                     type = NONCITIZEN_0_PASSABLE;
                     break;
             }
@@ -169,26 +171,26 @@ static int get_land_type_noncitizen(int grid_offset)
     return type;
 }
 
-static void map_routing_update_land_noncitizen()
+static void map_routing_update_land_noncitizen(void)
 {
     map_grid_init_i8(terrain_land_noncitizen.items, -1);
-    int grid_offset = Data_State.map.gridStartOffset;
-    for (int y = 0; y < Data_State.map.height; y++, grid_offset += Data_State.map.gridBorderSize) {
-        for (int x = 0; x < Data_State.map.width; x++, grid_offset++) {
-            int terrain = Data_Grid_terrain[grid_offset] & Terrain_NotClear;
-            if (Data_Grid_terrain[grid_offset] & Terrain_Gatehouse) {
+    int grid_offset = map_data.start_offset;
+    for (int y = 0; y < map_data.height; y++, grid_offset += map_data.border_size) {
+        for (int x = 0; x < map_data.width; x++, grid_offset++) {
+            int terrain = map_terrain_get(grid_offset);
+            if (terrain & TERRAIN_GATEHOUSE) {
                 terrain_land_noncitizen.items[grid_offset] = NONCITIZEN_4_GATEHOUSE;
-            } else if (terrain & Terrain_Road) {
+            } else if (terrain & TERRAIN_ROAD) {
                 terrain_land_noncitizen.items[grid_offset] = NONCITIZEN_0_PASSABLE;
-            } else if (terrain & (Terrain_Garden | Terrain_AccessRamp | Terrain_Rubble)) {
+            } else if (terrain & (TERRAIN_GARDEN | TERRAIN_ACCESS_RAMP | TERRAIN_RUBBLE)) {
                 terrain_land_noncitizen.items[grid_offset] = NONCITIZEN_2_CLEARABLE;
-            } else if (terrain & Terrain_Building) {
+            } else if (terrain & TERRAIN_BUILDING) {
                 terrain_land_noncitizen.items[grid_offset] = get_land_type_noncitizen(grid_offset);
-            } else if (Data_Grid_terrain[grid_offset] & Terrain_Aqueduct) {
+            } else if (terrain & TERRAIN_AQUEDUCT) {
                 terrain_land_noncitizen.items[grid_offset] = NONCITIZEN_2_CLEARABLE;
-            } else if (Data_Grid_terrain[grid_offset] & Terrain_Wall) {
+            } else if (terrain & TERRAIN_WALL) {
                 terrain_land_noncitizen.items[grid_offset] = NONCITIZEN_3_WALL;
-            } else if (Data_Grid_terrain[grid_offset] & Terrain_NotClear) {
+            } else if (terrain & TERRAIN_NOT_CLEAR) {
                 terrain_land_noncitizen.items[grid_offset] = NONCITIZEN_N1_BLOCKED;
             } else {
                 terrain_land_noncitizen.items[grid_offset] = NONCITIZEN_0_PASSABLE;
@@ -199,22 +201,22 @@ static void map_routing_update_land_noncitizen()
 
 static int is_surrounded_by_water(int grid_offset)
 {
-    return (Data_Grid_terrain[grid_offset + map_grid_delta(0, -1)] & Terrain_Water) &&
-        (Data_Grid_terrain[grid_offset + map_grid_delta(-1, 0)] & Terrain_Water) &&
-        (Data_Grid_terrain[grid_offset + map_grid_delta(1, 0)] & Terrain_Water) &&
-        (Data_Grid_terrain[grid_offset + map_grid_delta(0, 1)] & Terrain_Water);
+    return map_terrain_is(grid_offset + map_grid_delta(0, -1), TERRAIN_WATER) &&
+        map_terrain_is(grid_offset + map_grid_delta(-1, 0), TERRAIN_WATER) &&
+        map_terrain_is(grid_offset + map_grid_delta(1, 0), TERRAIN_WATER) &&
+        map_terrain_is(grid_offset + map_grid_delta(0, 1), TERRAIN_WATER);
 }
 
-void map_routing_update_water()
+void map_routing_update_water(void)
 {
     map_grid_init_i8(terrain_water.items, -1);
-    int grid_offset = Data_State.map.gridStartOffset;
-    for (int y = 0; y < Data_State.map.height; y++, grid_offset += Data_State.map.gridBorderSize) {
-        for (int x = 0; x < Data_State.map.width; x++, grid_offset++) {
-            if (Data_Grid_terrain[grid_offset] & Terrain_Water && is_surrounded_by_water(grid_offset)) {
-                if (x > 0 && x < Data_State.map.width - 1 &&
-                    y > 0 && y < Data_State.map.height - 1) {
-                    switch (Data_Grid_spriteOffsets[grid_offset]) {
+    int grid_offset = map_data.start_offset;
+    for (int y = 0; y < map_data.height; y++, grid_offset += map_data.border_size) {
+        for (int x = 0; x < map_data.width; x++, grid_offset++) {
+            if (map_terrain_is(grid_offset, TERRAIN_WATER) && is_surrounded_by_water(grid_offset)) {
+                if (x > 0 && x < map_data.width - 1 &&
+                    y > 0 && y < map_data.height - 1) {
+                    switch (map_sprite_bridge_at(grid_offset)) {
                         case 5:
                         case 6: // low bridge middle section
                             terrain_water.items[grid_offset] = WATER_N3_LOW_BRIDGE;
@@ -238,13 +240,13 @@ void map_routing_update_water()
 
 static int is_wall_tile(int grid_offset)
 {
-    return (Data_Grid_terrain[grid_offset] & Terrain_WallOrGatehouse) ? 1 : 0;
+    return map_terrain_is(grid_offset, TERRAIN_WALL_OR_GATEHOUSE) ? 1 : 0;
 }
 
 static int count_adjacent_wall_tiles(int grid_offset)
 {
     int adjacent = 0;
-    switch (Data_State.map.orientation) {
+    switch (city_view_orientation()) {
         case DIR_0_TOP:
             adjacent += is_wall_tile(grid_offset + map_grid_delta(0, 1));
             adjacent += is_wall_tile(grid_offset + map_grid_delta(1, 1));
@@ -269,19 +271,19 @@ static int count_adjacent_wall_tiles(int grid_offset)
     return adjacent;
 }
 
-void map_routing_update_walls()
+void map_routing_update_walls(void)
 {
     map_grid_init_i8(terrain_walls.items, -1);
-    int grid_offset = Data_State.map.gridStartOffset;
-    for (int y = 0; y < Data_State.map.height; y++, grid_offset += Data_State.map.gridBorderSize) {
-        for (int x = 0; x < Data_State.map.width; x++, grid_offset++) {
-            if (Data_Grid_terrain[grid_offset] & Terrain_Wall) {
+    int grid_offset = map_data.start_offset;
+    for (int y = 0; y < map_data.height; y++, grid_offset += map_data.border_size) {
+        for (int x = 0; x < map_data.width; x++, grid_offset++) {
+            if (map_terrain_is(grid_offset, TERRAIN_WALL)) {
                 if (count_adjacent_wall_tiles(grid_offset) == 3) {
                     terrain_walls.items[grid_offset] = WALL_0_PASSABLE;
                 } else {
                     terrain_walls.items[grid_offset] = WALL_N1_BLOCKED;
                 }
-            } else if (Data_Grid_terrain[grid_offset] & Terrain_Gatehouse) {
+            } else if (map_terrain_is(grid_offset, TERRAIN_GATEHOUSE)) {
                 terrain_walls.items[grid_offset] = WALL_0_PASSABLE;
             } else {
                 terrain_walls.items[grid_offset] = WALL_N1_BLOCKED;
@@ -293,6 +295,34 @@ void map_routing_update_walls()
 int map_routing_is_wall_passable(int grid_offset)
 {
     return terrain_walls.items[grid_offset] == WALL_0_PASSABLE;
+}
+
+static int wall_tile_in_radius(int x, int y, int radius, int *x_wall, int *y_wall)
+{
+    int size = 1;
+    int x_min, y_min, x_max, y_max;
+    map_grid_get_area(x, y, size, radius, &x_min, &y_min, &x_max, &y_max);
+
+    for (int yy = y_min; yy <= y_max; yy++) {
+        for (int xx = x_min; xx <= x_max; xx++) {
+            if (map_routing_is_wall_passable(map_grid_offset(xx, yy))) {
+                *x_wall = xx;
+                *y_wall = yy;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+int map_routing_wall_tile_in_radius(int x, int y, int radius, int *x_wall, int *y_wall)
+{
+    for (int i = 1; i <= radius; i++) {
+        if (wall_tile_in_radius(x, y, i, x_wall, y_wall)) {
+            return 1;
+        }
+    }
+    return 0;
 }
 
 int map_routing_citizen_is_passable(int grid_offset)

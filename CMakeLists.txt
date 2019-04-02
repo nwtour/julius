@@ -1,29 +1,190 @@
-cmake_minimum_required(VERSION 2.6)
-project(julius)
+cmake_minimum_required(VERSION 3.0.2)
+include(CMakeDependentOption)
+
+if(VITA_BUILD AND SWITCH_BUILD)
+    message(FATAL_ERROR "Cannot build with -DVITA_BUILD=ON and -DSWITCH_BUILD=ON at the same time")
+endif()
+
+option(VITA_BUILD "Build for the PlayStation Vita handheld game console." OFF)
+cmake_dependent_option(SWITCH_BUILD "Build for the Nintendo Switch handheld game console." OFF "NOT VITA_BUILD" OFF)
+
+if(VITA_BUILD AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    if(DEFINED ENV{VITASDK})
+        set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE PATH "toolchain file")
+    else()
+        message(FATAL_ERROR "Please define VITASDK to point to your SDK path!")
+    endif()
+endif()
+
+if(SWITCH_BUILD AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    if(DEFINED ENV{DEVKITPRO})
+        set(DEVKITPRO $ENV{DEVKITPRO})
+        set(CMAKE_TOOLCHAIN_FILE "${DEVKITPRO}/switch.cmake" CACHE PATH "toolchain file")
+    else()
+        message(FATAL_ERROR "Please define DEVKITPRO to point to your SDK path!")
+    endif()
+endif()
+
+set(SHORT_NAME julius)
+project(${SHORT_NAME} C)
+
+if (VITA_BUILD)
+    include("${VITASDK}/share/vita.cmake" REQUIRED)
+    set(VITA_TITLEID  "JULIUS001")
+endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH}" "${CMAKE_SOURCE_DIR}/cmake/")
 
-if (CMAKE_COMPILER_IS_GNUCC)
+if (CMAKE_VERSION VERSION_LESS 3.1)
+    if (CMAKE_COMPILER_IS_GNUCC)
+        set(CMAKE_C_FLAGS "-std=gnu99 ${CMAKE_C_FLAGS}")
+    endif()
+else()
+    set(CMAKE_C_STANDARD 99)
+endif()
 
+if (CMAKE_COMPILER_IS_GNUCC)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror=implicit-function-declaration")
 
-    if (CMAKE_C_COMPILER_VERSION VERSION_GREATER 4.9.0)
-        set (CMAKE_C_FLAGS "-Werror=incompatible-pointer-types -Werror=int-conversion ${CMAKE_C_FLAGS}")
-    else ()
-        set (CMAKE_C_STANDARD 99) # -std=gnu99
-        message(WARNING "WARNING: Old version GCC. Continue...")
-    endif ()
-endif ()
+    if (CMAKE_C_COMPILER_VERSION VERSION_GREATER 5.0)
+        set(CMAKE_C_FLAGS "-Werror=incompatible-pointer-types -Werror=int-conversion -Wstrict-prototypes ${CMAKE_C_FLAGS}")
+    endif()
+endif()
 
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage")
-#set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
-set(SMK_FILES src/Video/smacker.c src/Video/smk_bitstream.c src/Video/smk_hufftree.c)
+set(PROJECT_VERSION_MAJOR 1)
+set(PROJECT_VERSION_MINOR 0)
+set(PROJECT_VERSION_PATCH 0)
+set(IS_RELEASE_VERSION FALSE)
+
+if(IS_RELEASE_VERSION)
+    set(PROJECT_VERSION_TWEAK 0)
+    set(VERSION_REVISION "")
+elseif (EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    find_package(Git)
+    if(Git_FOUND)
+        execute_process(
+            COMMAND git rev-list --count HEAD ^tags/v${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            RESULT_VARIABLE TWEAK_RESULT
+            OUTPUT_VARIABLE PROJECT_VERSION_TWEAK
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        execute_process(
+            COMMAND git rev-parse --short --verify HEAD
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            OUTPUT_VARIABLE VERSION_COMMIT_HASH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        execute_process(
+            COMMAND git diff-index --quiet HEAD --
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            RESULT_VARIABLE VERSION_COMMIT_DIRTY
+        )
+        if(VERSION_COMMIT_DIRTY)
+            set(DIRTY_POSTFIX "-dirty")
+        else()
+            set(DIRTY_POSTFIX "")
+        endif()
+        if(NOT TWEAK_RESULT EQUAL 0)
+            # Happens on a shallow git clone, like Travis does. Append date to version ref.
+            set(PROJECT_VERSION_TWEAK 0)
+            string(TIMESTAMP TODAY "%Y%m%d")
+            set(VERSION_REVISION "-${TODAY}-${VERSION_COMMIT_HASH}${DIRTY_POSTFIX}")
+        else()
+            set(VERSION_REVISION ".${PROJECT_VERSION_TWEAK}-${VERSION_COMMIT_HASH}${DIRTY_POSTFIX}")
+        endif()
+    else()
+        set(PROJECT_VERSION_TWEAK 0)
+        set(VERSION_REVISION " unknown development version")
+    endif()
+else()
+    set(PROJECT_VERSION_TWEAK 0)
+    set(VERSION_REVISION " unknown development version")
+endif()
+
+if(VITA_BUILD)
+    string(LENGTH "${PROJECT_VERSION_MAJOR}" NUM_DIGITS)
+    if(NUM_DIGITS EQUAL 1)
+        set(VITA_VERSION_MAJOR "0${PROJECT_VERSION_MAJOR}")
+    elseif(NUM_DIGITS EQUAL 2)
+        set(VITA_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
+    else()
+        message(FATAL_ERROR "On Vita, major version number can only have one or two digits, found ${NUM_DIGITS} digits instead")
+    endif()
+
+    string(LENGTH "${PROJECT_VERSION_MINOR}" NUM_DIGITS)
+    if(NUM_DIGITS EQUAL 1)
+        set(VITA_VERSION_MINOR "0${PROJECT_VERSION_MINOR}")
+    elseif(NUM_DIGITS EQUAL 2)
+        set(VITA_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
+    else()
+        message(FATAL_ERROR "On Vita, minor version number can only have one or two digits, found ${NUM_DIGITS} digits instead")
+    endif()
+
+    set(VITA_VERSION "${VITA_VERSION_MAJOR}.${VITA_VERSION_MINOR}")
+endif()
+
+if (SWITCH_BUILD)
+    string(SUBSTRING "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}${VERSION_REVISION}" 0 15 SWITCH_VERSION)
+endif()
+
+configure_file(${PROJECT_SOURCE_DIR}/gen/version.h.in ${PROJECT_SOURCE_DIR}/src/platform/version.h)
+configure_file(${PROJECT_SOURCE_DIR}/gen/version.rc.in ${PROJECT_SOURCE_DIR}/res/version.rc)
+configure_file(${PROJECT_SOURCE_DIR}/gen/version.txt.in ${PROJECT_SOURCE_DIR}/res/version.txt)
+
+if(DRAW_FPS)
+  add_definitions(-DDRAW_FPS)
+endif()
+
+set(SMK_FILES
+    ext/libsmacker/smacker.c
+    ext/libsmacker/smk_bitstream.c
+    ext/libsmacker/smk_hufftree.c
+)
+
+set(TINYFD_FILES
+    ext/tinyfiledialogs/tinyfiledialogs.c
+)
+
+set(PLATFORM_FILES
+    ${PROJECT_SOURCE_DIR}/src/platform/julius.c
+    ${PROJECT_SOURCE_DIR}/src/platform/keyboard_input.c
+    ${PROJECT_SOURCE_DIR}/src/platform/log.c
+    ${PROJECT_SOURCE_DIR}/src/platform/prefs.c
+    ${PROJECT_SOURCE_DIR}/src/platform/sound_device.c
+)
+
+if (VITA_BUILD)
+    set(PLATFORM_FILES
+        ${PLATFORM_FILES}
+        ${PROJECT_SOURCE_DIR}/src/platform/vita/cursor.c
+        ${PROJECT_SOURCE_DIR}/src/platform/vita/screen.c
+        ${PROJECT_SOURCE_DIR}/src/platform/vita/vita.c
+        ${PROJECT_SOURCE_DIR}/src/platform/vita/vita_input.c
+        ${PROJECT_SOURCE_DIR}/src/platform/vita/vita_keyboard.c
+    )
+elseif (SWITCH_BUILD)
+    set(PLATFORM_FILES
+        ${PLATFORM_FILES}
+        ${PROJECT_SOURCE_DIR}/src/platform/switch/cursor.c
+        ${PROJECT_SOURCE_DIR}/src/platform/switch/screen.c
+        ${PROJECT_SOURCE_DIR}/src/platform/switch/switch_input.c
+        ${PROJECT_SOURCE_DIR}/src/platform/switch/switch_keyboard.c
+    )
+else()
+    set(PLATFORM_FILES
+        ${PLATFORM_FILES}
+        ${PROJECT_SOURCE_DIR}/src/platform/cursor.c
+        ${PROJECT_SOURCE_DIR}/src/platform/screen.c
+    )
+endif()
+
 set(CORE_FILES
     ${PROJECT_SOURCE_DIR}/src/core/buffer.c
     ${PROJECT_SOURCE_DIR}/src/core/calc.c
-    ${PROJECT_SOURCE_DIR}/src/core/debug.c
     ${PROJECT_SOURCE_DIR}/src/core/dir.c
     ${PROJECT_SOURCE_DIR}/src/core/file.c
+    ${PROJECT_SOURCE_DIR}/src/core/image.c
     ${PROJECT_SOURCE_DIR}/src/core/io.c
     ${PROJECT_SOURCE_DIR}/src/core/lang.c
     ${PROJECT_SOURCE_DIR}/src/core/random.c
@@ -31,59 +192,152 @@ set(CORE_FILES
     ${PROJECT_SOURCE_DIR}/src/core/time.c
     ${PROJECT_SOURCE_DIR}/src/core/zip.c
 )
-set (BUILDING_FILES
+
+set(BUILDING_FILES
+    ${PROJECT_SOURCE_DIR}/src/building/animation.c
+    ${PROJECT_SOURCE_DIR}/src/building/barracks.c
+    ${PROJECT_SOURCE_DIR}/src/building/building.c
+    ${PROJECT_SOURCE_DIR}/src/building/building_state.c
+    ${PROJECT_SOURCE_DIR}/src/building/construction.c
+    ${PROJECT_SOURCE_DIR}/src/building/construction_building.c
+    ${PROJECT_SOURCE_DIR}/src/building/construction_clear.c
+    ${PROJECT_SOURCE_DIR}/src/building/construction_warning.c
     ${PROJECT_SOURCE_DIR}/src/building/count.c
+    ${PROJECT_SOURCE_DIR}/src/building/destruction.c
+    ${PROJECT_SOURCE_DIR}/src/building/dock.c
+    ${PROJECT_SOURCE_DIR}/src/building/figure.c
+    ${PROJECT_SOURCE_DIR}/src/building/government.c
+    ${PROJECT_SOURCE_DIR}/src/building/granary.c
+    ${PROJECT_SOURCE_DIR}/src/building/house.c
+    ${PROJECT_SOURCE_DIR}/src/building/house_evolution.c
+    ${PROJECT_SOURCE_DIR}/src/building/house_population.c
+    ${PROJECT_SOURCE_DIR}/src/building/house_service.c
+    ${PROJECT_SOURCE_DIR}/src/building/industry.c
     ${PROJECT_SOURCE_DIR}/src/building/list.c
+    ${PROJECT_SOURCE_DIR}/src/building/maintenance.c
+    ${PROJECT_SOURCE_DIR}/src/building/market.c
+    ${PROJECT_SOURCE_DIR}/src/building/menu.c
     ${PROJECT_SOURCE_DIR}/src/building/model.c
-    ${PROJECT_SOURCE_DIR}/src/building/placement_warning.c
     ${PROJECT_SOURCE_DIR}/src/building/properties.c
     ${PROJECT_SOURCE_DIR}/src/building/storage.c
+    ${PROJECT_SOURCE_DIR}/src/building/warehouse.c
 )
-set (CITY_FILES
+set(CITY_FILES
+    ${PROJECT_SOURCE_DIR}/src/city/buildings.c
     ${PROJECT_SOURCE_DIR}/src/city/culture.c
+    ${PROJECT_SOURCE_DIR}/src/city/data.c
+    ${PROJECT_SOURCE_DIR}/src/city/data_private.c
+    ${PROJECT_SOURCE_DIR}/src/city/emperor.c
+    ${PROJECT_SOURCE_DIR}/src/city/entertainment.c
+    ${PROJECT_SOURCE_DIR}/src/city/festival.c
+    ${PROJECT_SOURCE_DIR}/src/city/figures.c
     ${PROJECT_SOURCE_DIR}/src/city/finance.c
+    ${PROJECT_SOURCE_DIR}/src/city/gods.c
+    ${PROJECT_SOURCE_DIR}/src/city/health.c
+    ${PROJECT_SOURCE_DIR}/src/city/houses.c
+    ${PROJECT_SOURCE_DIR}/src/city/labor.c
+    ${PROJECT_SOURCE_DIR}/src/city/map.c
     ${PROJECT_SOURCE_DIR}/src/city/message.c
+    ${PROJECT_SOURCE_DIR}/src/city/migration.c
+    ${PROJECT_SOURCE_DIR}/src/city/military.c
+    ${PROJECT_SOURCE_DIR}/src/city/mission.c
+    ${PROJECT_SOURCE_DIR}/src/city/population.c
+    ${PROJECT_SOURCE_DIR}/src/city/ratings.c
+    ${PROJECT_SOURCE_DIR}/src/city/resource.c
+    ${PROJECT_SOURCE_DIR}/src/city/sentiment.c
+    ${PROJECT_SOURCE_DIR}/src/city/sound.c
+    ${PROJECT_SOURCE_DIR}/src/city/trade.c
+    ${PROJECT_SOURCE_DIR}/src/city/victory.c
+    ${PROJECT_SOURCE_DIR}/src/city/view.c
     ${PROJECT_SOURCE_DIR}/src/city/warning.c
 )
-set (EMPIRE_FILES
+set(EMPIRE_FILES
     ${PROJECT_SOURCE_DIR}/src/empire/city.c
     ${PROJECT_SOURCE_DIR}/src/empire/empire.c
     ${PROJECT_SOURCE_DIR}/src/empire/object.c
     ${PROJECT_SOURCE_DIR}/src/empire/trade_prices.c
     ${PROJECT_SOURCE_DIR}/src/empire/trade_route.c
 )
-set (FIGURE_FILES
+set(FIGURE_FILES
+    ${PROJECT_SOURCE_DIR}/src/figure/action.c
+    ${PROJECT_SOURCE_DIR}/src/figure/combat.c
     ${PROJECT_SOURCE_DIR}/src/figure/enemy_army.c
     ${PROJECT_SOURCE_DIR}/src/figure/figure.c
     ${PROJECT_SOURCE_DIR}/src/figure/formation.c
+    ${PROJECT_SOURCE_DIR}/src/figure/formation_enemy.c
+    ${PROJECT_SOURCE_DIR}/src/figure/formation_herd.c
+    ${PROJECT_SOURCE_DIR}/src/figure/formation_layout.c
+    ${PROJECT_SOURCE_DIR}/src/figure/formation_legion.c
+    ${PROJECT_SOURCE_DIR}/src/figure/image.c
+    ${PROJECT_SOURCE_DIR}/src/figure/movement.c
     ${PROJECT_SOURCE_DIR}/src/figure/name.c
     ${PROJECT_SOURCE_DIR}/src/figure/phrase.c
     ${PROJECT_SOURCE_DIR}/src/figure/properties.c
     ${PROJECT_SOURCE_DIR}/src/figure/route.c
+    ${PROJECT_SOURCE_DIR}/src/figure/service.c
     ${PROJECT_SOURCE_DIR}/src/figure/sound.c
     ${PROJECT_SOURCE_DIR}/src/figure/trader.c
 )
-set (GAME_FILES
+set(FIGURETYPE_FILES
+    ${PROJECT_SOURCE_DIR}/src/figuretype/animal.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/cartpusher.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/crime.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/docker.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/enemy.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/entertainer.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/maintenance.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/market.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/migrant.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/missile.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/native.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/service.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/soldier.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/trader.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/wall.c
+    ${PROJECT_SOURCE_DIR}/src/figuretype/water.c
+)
+set(GAME_FILES
+    ${PROJECT_SOURCE_DIR}/src/game/animation.c
     ${PROJECT_SOURCE_DIR}/src/game/difficulty.c
+    ${PROJECT_SOURCE_DIR}/src/game/file.c
+    ${PROJECT_SOURCE_DIR}/src/game/file_io.c
+    ${PROJECT_SOURCE_DIR}/src/game/game.c
+    ${PROJECT_SOURCE_DIR}/src/game/mission.c
+    ${PROJECT_SOURCE_DIR}/src/game/orientation.c
+    ${PROJECT_SOURCE_DIR}/src/game/resource.c
     ${PROJECT_SOURCE_DIR}/src/game/settings.c
+    ${PROJECT_SOURCE_DIR}/src/game/state.c
+    ${PROJECT_SOURCE_DIR}/src/game/tick.c
     ${PROJECT_SOURCE_DIR}/src/game/time.c
     ${PROJECT_SOURCE_DIR}/src/game/tutorial.c
+    ${PROJECT_SOURCE_DIR}/src/game/undo.c
 )
-set (INPUT_FILES
+set(INPUT_FILES
+    ${PROJECT_SOURCE_DIR}/src/input/cursor.c
+    ${PROJECT_SOURCE_DIR}/src/input/hotkey.c
     ${PROJECT_SOURCE_DIR}/src/input/keyboard.c
     ${PROJECT_SOURCE_DIR}/src/input/mouse.c
     ${PROJECT_SOURCE_DIR}/src/input/scroll.c
 )
-set (MAP_FILES
+set(MAP_FILES
+    ${PROJECT_SOURCE_DIR}/src/map/aqueduct.c
     ${PROJECT_SOURCE_DIR}/src/map/bookmark.c
     ${PROJECT_SOURCE_DIR}/src/map/bridge.c
     ${PROJECT_SOURCE_DIR}/src/map/building.c
+    ${PROJECT_SOURCE_DIR}/src/map/building_tiles.c
     ${PROJECT_SOURCE_DIR}/src/map/desirability.c
+    ${PROJECT_SOURCE_DIR}/src/map/elevation.c
     ${PROJECT_SOURCE_DIR}/src/map/figure.c
     ${PROJECT_SOURCE_DIR}/src/map/grid.c
+    ${PROJECT_SOURCE_DIR}/src/map/image.c
+    ${PROJECT_SOURCE_DIR}/src/map/image_context.c
+    ${PROJECT_SOURCE_DIR}/src/map/natives.c
+    ${PROJECT_SOURCE_DIR}/src/map/orientation.c
+    ${PROJECT_SOURCE_DIR}/src/map/point.c
     ${PROJECT_SOURCE_DIR}/src/map/property.c
     ${PROJECT_SOURCE_DIR}/src/map/random.c
     ${PROJECT_SOURCE_DIR}/src/map/ring.c
+    ${PROJECT_SOURCE_DIR}/src/map/road_access.c
     ${PROJECT_SOURCE_DIR}/src/map/road_aqueduct.c
     ${PROJECT_SOURCE_DIR}/src/map/road_network.c
     ${PROJECT_SOURCE_DIR}/src/map/routing.c
@@ -91,8 +345,13 @@ set (MAP_FILES
     ${PROJECT_SOURCE_DIR}/src/map/routing_path.c
     ${PROJECT_SOURCE_DIR}/src/map/routing_terrain.c
     ${PROJECT_SOURCE_DIR}/src/map/soldier_strength.c
+    ${PROJECT_SOURCE_DIR}/src/map/sprite.c
+    ${PROJECT_SOURCE_DIR}/src/map/terrain.c
+    ${PROJECT_SOURCE_DIR}/src/map/tiles.c
+    ${PROJECT_SOURCE_DIR}/src/map/water.c
+    ${PROJECT_SOURCE_DIR}/src/map/water_supply.c
 )
-set (SCENARIO_FILES
+set(SCENARIO_FILES
     ${PROJECT_SOURCE_DIR}/src/scenario/building.c
     ${PROJECT_SOURCE_DIR}/src/scenario/criteria.c
     ${PROJECT_SOURCE_DIR}/src/scenario/demand_change.c
@@ -109,186 +368,312 @@ set (SCENARIO_FILES
     ${PROJECT_SOURCE_DIR}/src/scenario/request.c
     ${PROJECT_SOURCE_DIR}/src/scenario/scenario.c
 )
-set (GRAPHICS_FILES
+set(GRAPHICS_FILES
+    ${PROJECT_SOURCE_DIR}/src/graphics/arrow_button.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/button.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/font.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/generic_button.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/graphics.c
     ${PROJECT_SOURCE_DIR}/src/graphics/image.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/image_button.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/lang_text.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/menu.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/panel.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/rich_text.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/screen.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/screenshot.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/text.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/tooltip.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/video.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/warning.c
+    ${PROJECT_SOURCE_DIR}/src/graphics/window.c
 )
-set (SOUND_FILES
+set(SOUND_FILES
     ${PROJECT_SOURCE_DIR}/src/sound/city.c
     ${PROJECT_SOURCE_DIR}/src/sound/effect.c
     ${PROJECT_SOURCE_DIR}/src/sound/music.c
     ${PROJECT_SOURCE_DIR}/src/sound/speech.c
     ${PROJECT_SOURCE_DIR}/src/sound/system.c
 )
-add_executable(julius
-	${PROJECT_SOURCE_DIR}/linux/main2.c
-	${PROJECT_SOURCE_DIR}/linux/SDLSoundDevice.c
-	${PROJECT_SOURCE_DIR}/src/Animation.c
-	${PROJECT_SOURCE_DIR}/src/Building.c
-	${PROJECT_SOURCE_DIR}/src/BuildingHouse.c
-	${PROJECT_SOURCE_DIR}/src/BuildingPlacement.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Culture.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Finance.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Gods.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Labor.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Population.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Ratings.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Resource.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Tick.c
-	${PROJECT_SOURCE_DIR}/src/CityInfo_Victory.c
-	${PROJECT_SOURCE_DIR}/src/CityView.c
-	${PROJECT_SOURCE_DIR}/src/Cursor.c
-	${PROJECT_SOURCE_DIR}/src/Figure.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Animal.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Cartpusher.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Combat.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Common.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Culture.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Docker.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Enemy.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Entertainer.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Market.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Migrant.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Missile.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Native.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Rioter.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Service.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Soldier.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Trader.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Wall.c
-	${PROJECT_SOURCE_DIR}/src/FigureAction_Water.c
-	${PROJECT_SOURCE_DIR}/src/FigureGeneration.c
-	${PROJECT_SOURCE_DIR}/src/FigureMovement.c
-	${PROJECT_SOURCE_DIR}/src/Figure_Service.c
-	${PROJECT_SOURCE_DIR}/src/Formation.c
-	${PROJECT_SOURCE_DIR}/src/FormationUpdate.c
-	${PROJECT_SOURCE_DIR}/src/Game.c
-	${PROJECT_SOURCE_DIR}/src/GameFile.c
-	${PROJECT_SOURCE_DIR}/src/GameTick.c
-	${PROJECT_SOURCE_DIR}/src/Graphics.c
-	${PROJECT_SOURCE_DIR}/src/Graphics_Footprint.c
-	${PROJECT_SOURCE_DIR}/src/HouseEvolution.c
-	${PROJECT_SOURCE_DIR}/src/HousePopulation.c
-	${PROJECT_SOURCE_DIR}/src/KeyboardHotkey.c
-	${PROJECT_SOURCE_DIR}/src/Loader.c
-	${PROJECT_SOURCE_DIR}/src/Natives.c
-	${PROJECT_SOURCE_DIR}/src/Resource.c
-	${PROJECT_SOURCE_DIR}/src/Resource_Granary.c
-	${PROJECT_SOURCE_DIR}/src/Resource_Warehouse.c
-	${PROJECT_SOURCE_DIR}/src/Runner.c
-	${PROJECT_SOURCE_DIR}/src/Scenario.c
-	${PROJECT_SOURCE_DIR}/src/Screen.c
-	${PROJECT_SOURCE_DIR}/src/Security.c
-	${PROJECT_SOURCE_DIR}/src/SidebarMenu.c
-	${PROJECT_SOURCE_DIR}/src/Terrain.c
-	${PROJECT_SOURCE_DIR}/src/TerrainGraphics.c
-	${PROJECT_SOURCE_DIR}/src/TerrainGraphics_Context.c
-	${PROJECT_SOURCE_DIR}/src/TerrainWater.c
-	${PROJECT_SOURCE_DIR}/src/Trader.c
-	${PROJECT_SOURCE_DIR}/src/Undo.c
-	${PROJECT_SOURCE_DIR}/src/UtilityManagement.c
-	${PROJECT_SOURCE_DIR}/src/Video.c
-	${PROJECT_SOURCE_DIR}/src/Widget_Button.c
-	${PROJECT_SOURCE_DIR}/src/Widget_Menu.c
-	${PROJECT_SOURCE_DIR}/src/Widget_Panel.c
-	${PROJECT_SOURCE_DIR}/src/Widget_Text.c
-	${PROJECT_SOURCE_DIR}/src/Data/Model.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Chief.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Education.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Entertainment.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Financial.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Health.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Imperial.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Labor.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Military.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Population.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Ratings.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Religion.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisor_Trade.c
-	${PROJECT_SOURCE_DIR}/src/UI/Advisors.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Culture.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Decoration.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Distribution.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Engineering.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Entertainment.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Figures.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Government.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_House.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Industry.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Military.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Native.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Terrain.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingInfo_Water.c
-	${PROJECT_SOURCE_DIR}/src/UI/BuildingMenu.c
-	${PROJECT_SOURCE_DIR}/src/UI/CCKSelection.c
-	${PROJECT_SOURCE_DIR}/src/UI/City.c
-	${PROJECT_SOURCE_DIR}/src/UI/CityBuildings.c
-	${PROJECT_SOURCE_DIR}/src/UI/CityBuildings_Figures.c
-	${PROJECT_SOURCE_DIR}/src/UI/CityBuildings_Ghost.c
-	${PROJECT_SOURCE_DIR}/src/UI/CityBuildings_Overlay.c
-	${PROJECT_SOURCE_DIR}/src/UI/CityBuildings_Scroll.c
-	${PROJECT_SOURCE_DIR}/src/UI/DifficultyOptions.c
-	${PROJECT_SOURCE_DIR}/src/UI/DisplayOptions.c
-	${PROJECT_SOURCE_DIR}/src/UI/DonateToCityDialog.c
-	${PROJECT_SOURCE_DIR}/src/UI/EmpireMap.c
-	${PROJECT_SOURCE_DIR}/src/UI/FileDialog.c
-	${PROJECT_SOURCE_DIR}/src/UI/HoldFestivalDialog.c
-	${PROJECT_SOURCE_DIR}/src/UI/Intermezzo.c
-	${PROJECT_SOURCE_DIR}/src/UI/Logo.c
-	${PROJECT_SOURCE_DIR}/src/UI/MainMenu.c
-	${PROJECT_SOURCE_DIR}/src/UI/MessageDialog.c
-	${PROJECT_SOURCE_DIR}/src/UI/Minimap.c
-	${PROJECT_SOURCE_DIR}/src/UI/MissionEnd.c
-	${PROJECT_SOURCE_DIR}/src/UI/MissionStart.c
-	${PROJECT_SOURCE_DIR}/src/UI/NewCareerDialog.c
-	${PROJECT_SOURCE_DIR}/src/UI/OverlayMenu.c
-	${PROJECT_SOURCE_DIR}/src/UI/PlayerMessageList.c
-	${PROJECT_SOURCE_DIR}/src/UI/PopupDialog.c
-	${PROJECT_SOURCE_DIR}/src/UI/SendGiftToCaesarDialog.c
-	${PROJECT_SOURCE_DIR}/src/UI/SetSalaryDialog.c
-	${PROJECT_SOURCE_DIR}/src/UI/Sidebar.c
-	${PROJECT_SOURCE_DIR}/src/UI/SoundOptions.c
-	${PROJECT_SOURCE_DIR}/src/UI/SpeedOptions.c
-	${PROJECT_SOURCE_DIR}/src/UI/Tooltip.c
-	${PROJECT_SOURCE_DIR}/src/UI/TopMenu.c
-	${PROJECT_SOURCE_DIR}/src/UI/VideoIntermezzo.c
-	${PROJECT_SOURCE_DIR}/src/UI/Warning.c
-	${PROJECT_SOURCE_DIR}/src/UI/Window.c
-	${CORE_FILES}
-	${BUILDING_FILES}
-	${CITY_FILES}
-	${EMPIRE_FILES}
-	${FIGURE_FILES}
-	${GAME_FILES}
-	${INPUT_FILES}
-	${MAP_FILES}
-	${SCENARIO_FILES}
-	${GRAPHICS_FILES}
-	${SOUND_FILES}
-	${SMK_FILES}
+set(WIDGET_FILES
+    ${PROJECT_SOURCE_DIR}/src/widget/city.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_bridge.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_building_ghost.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_figure.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_education.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_entertainment.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_health.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_other.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_overlay_risks.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_with_overlay.c
+    ${PROJECT_SOURCE_DIR}/src/widget/city_without_overlay.c
+    ${PROJECT_SOURCE_DIR}/src/widget/minimap.c
+    ${PROJECT_SOURCE_DIR}/src/widget/sidebar.c
+    ${PROJECT_SOURCE_DIR}/src/widget/top_menu.c
+)
+set(WINDOW_FILES
+    ${PROJECT_SOURCE_DIR}/src/window/advisors.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/chief.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/education.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/entertainment.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/financial.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/health.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/imperial.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/labor.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/military.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/population.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/ratings.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/religion.c
+    ${PROJECT_SOURCE_DIR}/src/window/advisor/trade.c
+    ${PROJECT_SOURCE_DIR}/src/window/build_menu.c
+    ${PROJECT_SOURCE_DIR}/src/window/building_info.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/common.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/culture.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/distribution.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/figures.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/government.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/house.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/industry.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/military.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/terrain.c
+    ${PROJECT_SOURCE_DIR}/src/window/building/utility.c
+    ${PROJECT_SOURCE_DIR}/src/window/cck_selection.c
+    ${PROJECT_SOURCE_DIR}/src/window/city.c
+    ${PROJECT_SOURCE_DIR}/src/window/difficulty_options.c
+    ${PROJECT_SOURCE_DIR}/src/window/display_options.c
+    ${PROJECT_SOURCE_DIR}/src/window/donate_to_city.c
+    ${PROJECT_SOURCE_DIR}/src/window/empire.c
+    ${PROJECT_SOURCE_DIR}/src/window/file_dialog.c
+    ${PROJECT_SOURCE_DIR}/src/window/gift_to_emperor.c
+    ${PROJECT_SOURCE_DIR}/src/window/hold_festival.c
+    ${PROJECT_SOURCE_DIR}/src/window/intermezzo.c
+    ${PROJECT_SOURCE_DIR}/src/window/labor_priority.c
+    ${PROJECT_SOURCE_DIR}/src/window/logo.c
+    ${PROJECT_SOURCE_DIR}/src/window/main_menu.c
+    ${PROJECT_SOURCE_DIR}/src/window/message_dialog.c
+    ${PROJECT_SOURCE_DIR}/src/window/message_list.c
+    ${PROJECT_SOURCE_DIR}/src/window/mission_briefing.c
+    ${PROJECT_SOURCE_DIR}/src/window/mission_end.c
+    ${PROJECT_SOURCE_DIR}/src/window/mission_selection.c
+    ${PROJECT_SOURCE_DIR}/src/window/new_career.c
+    ${PROJECT_SOURCE_DIR}/src/window/overlay_menu.c
+    ${PROJECT_SOURCE_DIR}/src/window/popup_dialog.c
+    ${PROJECT_SOURCE_DIR}/src/window/resource_settings.c
+    ${PROJECT_SOURCE_DIR}/src/window/set_salary.c
+    ${PROJECT_SOURCE_DIR}/src/window/sound_options.c
+    ${PROJECT_SOURCE_DIR}/src/window/speed_options.c
+    ${PROJECT_SOURCE_DIR}/src/window/trade_opened.c
+    ${PROJECT_SOURCE_DIR}/src/window/trade_prices.c
+    ${PROJECT_SOURCE_DIR}/src/window/victory_dialog.c
+    ${PROJECT_SOURCE_DIR}/src/window/victory_video.c
 )
 
-#include(FindPkgConfig)
-#pkg_search_module(SDL2 REQUIRED sdl2)
-#pkg_search_module(SDL2_MIXER REQUIRED SDL2_mixer)
+set(MACOSX_FILES "")
+if(APPLE)
+    set(MACOSX_FILES ${PROJECT_SOURCE_DIR}/res/julius.icns)
+endif()
+
+add_executable(julius
+    WIN32
+    ${PLATFORM_FILES}
+    ${CORE_FILES}
+    ${BUILDING_FILES}
+    ${CITY_FILES}
+    ${EMPIRE_FILES}
+    ${FIGURE_FILES}
+    ${FIGURETYPE_FILES}
+    ${GAME_FILES}
+    ${INPUT_FILES}
+    ${MAP_FILES}
+    ${SCENARIO_FILES}
+    ${GRAPHICS_FILES}
+    ${SOUND_FILES}
+    ${WIDGET_FILES}
+    ${WINDOW_FILES}
+    ${SMK_FILES}
+    ${TINYFD_FILES}
+    ${PROJECT_SOURCE_DIR}/res/julius.rc
+    ${MACOSX_FILES}
+)
 
 find_package(SDL2 REQUIRED)
 find_package(SDL2_mixer REQUIRED)
 
+if(MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
+if(APPLE)
+    # generating a macOS icns file (see https://stackoverflow.com/a/20703594)
+    add_custom_command(OUTPUT ${PROJECT_SOURCE_DIR}/res/julius.icns
+        COMMAND mkdir -p julius.iconset
+        COMMAND sips -z 16 16    julius_256.png --out julius.iconset/icon_16x16.png
+        COMMAND sips -z 32 32    julius_256.png --out julius.iconset/icon_16x16@2x.png
+        COMMAND sips -z 32 32    julius_256.png --out julius.iconset/icon_32x32.png
+        COMMAND sips -z 64 64    julius_256.png --out julius.iconset/icon_32x32@2x.png
+        COMMAND sips -z 128 128  julius_256.png --out julius.iconset/icon_128x128.png
+        COMMAND sips -z 256 256  julius_256.png --out julius.iconset/icon_128x128@2x.png
+        COMMAND sips -z 256 256  julius_256.png --out julius.iconset/icon_256x256.png
+        COMMAND sips -z 512 512  julius_512.png --out julius.iconset/icon_256x256@2x.png
+        COMMAND iconutil -c icns julius.iconset
+        COMMAND rm -R julius.iconset
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/res)
+    set_source_files_properties(${PROJECT_SOURCE_DIR}/res/julius.icns PROPERTIES
+        MACOSX_PACKAGE_LOCATION "Resources")
+
+    # setting variables that will populate Info.plist
+    set(MACOSX_BUNDLE_GUI_IDENTIFIER "nl.biancavanschaik.julius")
+    set(MACOSX_BUNDLE_BUNDLE_NAME ${PROJECT_NAME})
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.10" CACHE STRING "Minimum OS X deployment version" FORCE)
+    set(MACOSX_BUNDLE_ICON_FILE "julius.icns")
+    set(MACOSX_BUNDLE_BUNDLE_VERSION
+        "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}${VERSION_REVISION}")
+    set(MACOSX_BUNDLE_LONG_VERSION_STRING ${MACOSX_BUNDLE_BUNDLE_VERSION})
+    set(MACOSX_BUNDLE_SHORT_VERSION_STRING ${MACOSX_BUNDLE_BUNDLE_VERSION})
+
+    set_target_properties(julius PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST "${PROJECT_SOURCE_DIR}/res/Info.plist.in")
+
+    set(DIRS "")
+
+    # if SDL2_mixer library is a framework, we need to indicate to CMake
+    # the path to its dependencies (Ogg.framework etc):
+    if(EXISTS "${SDL2_MIXER_LIBRARY}/Versions/A/Frameworks")
+        set(DIRS "${DIRS};${SDL2_MIXER_LIBRARY}/Versions/A/Frameworks")
+    endif()
+
+    # when installing, "fixup" automatically copies librairies inside the
+    # bundle and links the binary against them
+    install(CODE "
+        include(BundleUtilities)
+        fixup_bundle(${CMAKE_BINARY_DIR}/${PROJECT_NAME}.app \"\" \"${DIRS}\")
+    " BUNDLE DESTINATION ${CMAKE_BINARY_DIR})
+endif()
+
 include_directories(${SDL2_INCLUDE_DIR})
 include_directories(${SDL2_MIXER_INCLUDE_DIR})
 
-#set(LIBS ${LIBS} ${SDL_LIBRARY})
-#link_libraries(${LIBS})
-target_link_libraries (julius ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY})
+if (SWITCH_BUILD)
+    include_directories(
+        ${DEVKITPRO}/portlibs/switch/include/SDL2
+        ${DEVKITPRO}/libnx/include
+        ${DEVKITPRO}/portlibs/switch/include
+        ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+endif()
 
+include_directories(ext)
 include_directories(src)
+if(MSVC)
+    include_directories(ext/dirent)
+endif()
 
-install(TARGETS julius RUNTIME DESTINATION bin)
+if (VITA_BUILD)
+    target_link_libraries (${SHORT_NAME}
+        ${SDL2_MIXER_LIBRARY}
+        ${SDL2_LIBRARY}
+        vorbisfile
+        vorbis
+        mikmod
+        modplug
+        mpg123
+        FLAC
+        ogg
+        jpeg
+        png
+        freetype
+        vita2d
+        m
+        z
+        SceAppUtil_stub
+        SceAudio_stub
+        SceCommonDialog_stub
+        SceCtrl_stub
+        SceDisplay_stub
+        SceGxm_stub
+        SceHid_stub
+        SceSysmodule_stub
+        SceTouch_stub
+        ScePower_stub
+        ScePgf_stub
+        SceAppMgr_stub
+    )
 
-# Unit tests
-enable_testing()
-add_subdirectory(test)
+    vita_create_self(${SHORT_NAME}.self ${SHORT_NAME} UNSAFE UNCOMPRESSED)
+    vita_create_vpk(${SHORT_NAME}.vpk ${VITA_TITLEID} ${SHORT_NAME}.self
+        VERSION ${VITA_VERSION}
+        NAME ${SHORT_NAME}
+        FILE res/sce_sys/icon0.png sce_sys/icon0.png
+        FILE res/sce_sys/livearea/contents/bg.png sce_sys/livearea/contents/bg.png
+        FILE res/sce_sys/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
+        FILE res/sce_sys/livearea/contents/template.xml sce_sys/livearea/contents/template.xml
+    )
+elseif(SWITCH_BUILD)
+    target_link_libraries (${SHORT_NAME}
+        SDL2_mixer
+        SDL2
+        EGL
+        GLESv2
+        glapi
+        drm_nouveau
+        png
+        jpeg
+        vorbisidec
+        mikmod
+        modplug
+        mpg123
+        FLAC
+        ogg
+        jpeg
+        png
+        freetype
+        m
+        z
+        nx
+        stdc++
+    )
 
+    set(FLAGS
+        -D__SWITCH__
+        -Wno-write-strings
+        -march=armv8-a
+        -mtune=cortex-a57
+        -mtp=soft
+        -O2
+        -fPIE
+        -fno-asynchronous-unwind-tables
+        -funroll-loops
+        -fno-unwind-tables
+        -fno-optimize-sibling-calls
+        -mlittle-endian
+        -ffunction-sections
+    )
+
+    foreach(flag ${FLAGS})
+        set(FLAGS_GENERAL "${FLAGS_GENERAL} ${flag}")
+    endforeach(flag ${FLAGS})
+
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${FLAGS_GENERAL} --verbose")
+
+    target_compile_options(${SHORT_NAME} PRIVATE ${FLAGS})
+    add_custom_command(TARGET ${SHORT_NAME}
+        POST_BUILD
+        COMMAND ${DEVKITPRO}/tools/bin/nacptool --create "${SHORT_NAME}" "rsn8887" ${SWITCH_VERSION} ${SHORT_NAME}.nacp
+        COMMAND ${DEVKITPRO}/tools/bin/elf2nro ${SHORT_NAME} ${SHORT_NAME}.nro --icon=${CMAKE_SOURCE_DIR}/res/switchdata/icon0.jpg --nacp=${SHORT_NAME}.nacp
+        COMMAND rm -rf release/${SHORT_NAME}
+        COMMAND mkdir -p release/${SHORT_NAME}
+        COMMAND cp -f ${SHORT_NAME}.nro release/${SHORT_NAME}/${SHORT_NAME}.nro
+        COMMAND cd release && zip -r ../${SHORT_NAME}_switch.zip ${SHORT_NAME} -x "*.DS_Store" -x "*__MAC*"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+    )
+else()
+    target_link_libraries (${SHORT_NAME} ${SDL2_LIBRARY} ${SDL2_MIXER_LIBRARY})
+    if(NOT APPLE)
+        install(TARGETS ${SHORT_NAME} RUNTIME DESTINATION bin)
+    endif()
+
+    # Unit tests
+    enable_testing()
+    add_subdirectory(test)
+endif()

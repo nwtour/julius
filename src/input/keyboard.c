@@ -1,8 +1,7 @@
 #include "keyboard.h"
 
 #include "core/string.h"
-
-#include "Widget.h"
+#include "graphics/text.h"
 
 static struct {
     int insert;
@@ -32,13 +31,13 @@ void keyboard_start_capture(uint8_t *text, int max_length, int allow_punctuation
     data.font = font;
 }
 
-void keyboard_refresh()
+void keyboard_refresh(void)
 {
     data.length = string_length(data.text);
     data.cursor_position = data.length;
 }
 
-void keyboard_stop_capture()
+void keyboard_stop_capture(void)
 {
     data.capture = 0;
     data.text = 0;
@@ -48,27 +47,32 @@ void keyboard_stop_capture()
     data.accepted = 0;
 }
 
-int keyboard_input_is_accepted()
+int keyboard_input_is_accepted(void)
 {
-    return data.accepted;
+    if (data.accepted) {
+        data.accepted = 0;
+        return 1;
+    } else {
+        return 0;
+    }
 }
 
-int keyboard_is_insert()
+int keyboard_is_insert(void)
 {
     return data.insert;
 }
 
-int keyboard_cursor_position()
+int keyboard_cursor_position(void)
 {
     return data.cursor_position;
 }
 
-void keyboard_return()
+void keyboard_return(void)
 {
     data.accepted = 1;
 }
 
-static void move_left(uint8_t *start, uint8_t *end)
+static void move_left(uint8_t *start, const uint8_t *end)
 {
     while (start < end) {
         start[0] = start[1];
@@ -77,7 +81,7 @@ static void move_left(uint8_t *start, uint8_t *end)
     *start = 0; // TODO ? trailing \0 should have been copied...
 }
 
-static void move_right(uint8_t *start, uint8_t *end)
+static void move_right(const uint8_t *start, uint8_t *end)
 {
     end[1] = 0;
     while (end > start) {
@@ -91,7 +95,7 @@ static void add_char(uint8_t value)
     if (data.length + 1 == data.max_length) {
         return;
     }
-    if (Widget_Text_getWidth(data.text, data.font) >= data.box_width) {
+    if (text_get_width(data.text, data.font) >= data.box_width) {
         return;
     }
     if (data.insert) {
@@ -109,13 +113,13 @@ static void add_char(uint8_t value)
     }
 }
 
-static void remove_current_char()
+static void remove_current_char(void)
 {
     move_left(&data.text[data.cursor_position], &data.text[data.length]);
     data.length--;
 }
 
-void keyboard_backspace()
+void keyboard_backspace(void)
 {
     if (data.capture && data.cursor_position > 0) {
         data.cursor_position--;
@@ -123,40 +127,40 @@ void keyboard_backspace()
     }
 }
 
-void keyboard_delete()
+void keyboard_delete(void)
 {
     if (data.capture && data.length > 0) {
         remove_current_char();
     }
 }
 
-void keyboard_insert()
+void keyboard_insert(void)
 {
     data.insert ^= 1;
 }
 
-void keyboard_left()
+void keyboard_left(void)
 {
     if (data.capture && data.cursor_position > 0) {
         data.cursor_position--;
     }
 }
 
-void keyboard_right()
+void keyboard_right(void)
 {
     if (data.capture && data.cursor_position < data.length) {
         data.cursor_position++;
     }
 }
 
-void keyboard_home()
+void keyboard_home(void)
 {
     if (data.capture) {
         data.cursor_position = 0;
     }
 }
 
-void keyboard_end()
+void keyboard_end(void)
 {
     data.cursor_position = data.length;
 }

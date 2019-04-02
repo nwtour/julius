@@ -6,10 +6,6 @@
  * Figure types.
  */
 
-#define FigureIsEnemy(t) ((t) >= FIGURE_ENEMY43_SPEAR && (t) <= FIGURE_ENEMY_CAESAR_LEGIONARY)
-#define FigureIsLegion(t) ((t) >= FIGURE_FORT_JAVELIN && (t) <= FIGURE_FORT_LEGIONARY)
-#define FigureIsHerd(t) ((t) >= FIGURE_SHEEP && (t) <= FIGURE_ZEBRA)
-
 /**
  * Figure types
  */
@@ -69,8 +65,8 @@ typedef enum {
     FIGURE_ENEMY52_MOUNTED_ARCHER = 52,
     FIGURE_ENEMY53_AXE = 53,
     FIGURE_ENEMY54_GLADIATOR = 54,
-    FIGURE_ENEMY55_JAVELIN = 55,
-    FIGURE_ENEMY56_MOUNTED = 56,
+    FIGURE_ENEMY_CAESAR_JAVELIN = 55,
+    FIGURE_ENEMY_CAESAR_MOUNTED = 56,
     FIGURE_ENEMY_CAESAR_LEGIONARY = 57,
     FIGURE_NATIVE_TRADER = 58,
     FIGURE_ARROW = 59,
@@ -105,17 +101,17 @@ typedef enum {
 } enemy_type;
 
 enum {
-    FigureState_Alive = 1,
-    FigureState_Dead = 2
+    FIGURE_STATE_ALIVE = 1,
+    FIGURE_STATE_DEAD = 2
 };
 
 enum {
-    FigureTerrainUsage_Any = 0,
-    FigureTerrainUsage_Roads = 1,
-    FigureTerrainUsage_Enemy = 2,
-    FigureTerrainUsage_PreferRoads = 3,
-    FigureTerrainUsage_Walls = 4,
-    FigureTerrainUsage_Animal = 5,
+    TERRAIN_USAGE_ANY = 0,
+    TERRAIN_USAGE_ROADS = 1,
+    TERRAIN_USAGE_ENEMY = 2,
+    TERRAIN_USAGE_PREFER_ROADS = 3,
+    TERRAIN_USAGE_WALLS = 4,
+    TERRAIN_USAGE_ANIMAL = 5,
 };
 
 #endif // FIGURE_TYPE_H

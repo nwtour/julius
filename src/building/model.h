@@ -48,7 +48,7 @@ typedef struct {
  * Loads the model from file
  * @return boolean true if model was loaded successfully, false otherwise
  */
-int model_load();
+int model_load(void);
 
 /**
  * Gets the model for a building
@@ -59,7 +59,7 @@ const model_building *model_get_building(building_type type);
 
 /**
  * Gets the model for a house
- * @param house_level House level
+ * @param level House level
  * @return Read-only model
  */
 const model_house *model_get_house(house_level level);

@@ -1,13 +1,14 @@
 #include "bridge.h"
 
+#include "city/view.h"
 #include "core/direction.h"
+#include "map/data.h"
 #include "map/figure.h"
 #include "map/grid.h"
 #include "map/property.h"
 #include "map/routing_terrain.h"
-
-#include "Data/State.h"
-#include "../Terrain.h"
+#include "map/sprite.h"
+#include "map/terrain.h"
 
 static struct {
     int end_grid_offset;
@@ -16,17 +17,17 @@ static struct {
     int direction_grid_delta;
 } bridge;
 
-int map_bridge_building_length()
+int map_bridge_building_length(void)
 {
     return bridge.length;
 }
 
-void map_bridge_reset_building_length()
+void map_bridge_reset_building_length(void)
 {
     bridge.length = 0;
 }
 
-int map_bridge_calculate_length_direction(int x, int y, int is_ship_bridge, int *length, int *direction)
+int map_bridge_calculate_length_direction(int x, int y, int *length, int *direction)
 {
     int grid_offset = map_grid_offset(x, y);
     bridge.end_grid_offset = 0;
@@ -34,26 +35,25 @@ int map_bridge_calculate_length_direction(int x, int y, int is_ship_bridge, int 
     bridge.length = *length = 0;
     bridge.direction = *direction = 0;
 
-    int terrain = Data_Grid_terrain[grid_offset];
-    if (!(terrain & Terrain_Water)) {
+    if (!map_terrain_is(grid_offset, TERRAIN_WATER)) {
         return 0;
     }
-    if (terrain & Terrain_Road || terrain & Terrain_Building) {
+    if (map_terrain_is(grid_offset, TERRAIN_ROAD | TERRAIN_BUILDING)) {
         return 0;
     }
-    if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, Terrain_Water) != 3) {
+    if (map_terrain_count_directly_adjacent_with_type(grid_offset, TERRAIN_WATER) != 3) {
         return 0;
     }
-    if (!(Data_Grid_terrain[map_grid_offset(x, y-1)] & Terrain_Water)) {
+    if (!map_terrain_is(grid_offset + map_grid_delta(0, -1), TERRAIN_WATER)) {
         bridge.direction_grid_delta = map_grid_delta(0, 1);
         bridge.direction = DIR_4_BOTTOM;
-    } else if (!(Data_Grid_terrain[map_grid_offset(x+1, y)] & Terrain_Water)) {
+    } else if (!map_terrain_is(grid_offset + map_grid_delta(1, 0), TERRAIN_WATER)) {
         bridge.direction_grid_delta = map_grid_delta(-1, 0);
         bridge.direction = DIR_6_LEFT;
-    } else if (!(Data_Grid_terrain[map_grid_offset(x, y+1)] & Terrain_Water)) {
+    } else if (!map_terrain_is(grid_offset + map_grid_delta(0, 1), TERRAIN_WATER)) {
         bridge.direction_grid_delta = map_grid_delta(0, -1);
         bridge.direction = DIR_0_TOP;
-    } else if (!(Data_Grid_terrain[map_grid_offset(x-1, y)] & Terrain_Water)) {
+    } else if (!map_terrain_is(grid_offset + map_grid_delta(-1, 0), TERRAIN_WATER)) {
         bridge.direction_grid_delta = map_grid_delta(1, 0);
         bridge.direction = DIR_2_RIGHT;
     } else {
@@ -64,27 +64,129 @@ int map_bridge_calculate_length_direction(int x, int y, int is_ship_bridge, int 
     for (int i = 0; i < 40; i++) {
         grid_offset += bridge.direction_grid_delta;
         bridge.length++;
-        int nextTerrain = Data_Grid_terrain[grid_offset + bridge.direction_grid_delta];
-        if (nextTerrain & Terrain_Tree) {
+        int next_offset = grid_offset + bridge.direction_grid_delta;
+        if (map_terrain_is(next_offset, TERRAIN_TREE)) {
             break;
         }
-        if (!(nextTerrain & Terrain_Water)) {
+        if (!map_terrain_is(next_offset, TERRAIN_WATER)) {
             bridge.end_grid_offset = grid_offset;
-            if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, Terrain_Water) != 3) {
+            if (map_terrain_count_directly_adjacent_with_type(grid_offset, TERRAIN_WATER) != 3) {
                 bridge.end_grid_offset = 0;
             }
             *length = bridge.length;
             return bridge.end_grid_offset;
         }
-        if (nextTerrain & Terrain_Road || nextTerrain & Terrain_Building) {
+        if (map_terrain_is(next_offset, TERRAIN_ROAD | TERRAIN_BUILDING)) {
             break;
         }
-        if (Terrain_countTerrainTypeDirectlyAdjacentTo(grid_offset, Terrain_Water) != 4) {
+        if (map_terrain_count_diagonally_adjacent_with_type(grid_offset, TERRAIN_WATER) != 4) {
             break;
         }
     }
     // invalid bridge
     *length = bridge.length;
+    return 0;
+}
+
+static int get_pillar_distance(int length)
+{
+    switch (bridge.length) {
+        case  9:
+        case 10:
+            return 4;
+        case 11:
+        case 12:
+            return 5;
+        case 13:
+        case 14:
+            return 6;
+        case 15:
+        case 16:
+            return 7;
+        default:
+            return 8;
+    }
+}
+
+int map_bridge_get_sprite_id(int index, int length, int direction, int is_ship_bridge)
+{
+    if (is_ship_bridge) {
+        int pillar_distance = get_pillar_distance(length);
+        if (index == 1 || index == length - 2) {
+            // platform after ramp
+            return 13;
+        } else if (index == 0) {
+            // ramp at start
+            switch (direction) {
+                case DIR_0_TOP:
+                    return 7;
+                case DIR_2_RIGHT:
+                    return 8;
+                case DIR_4_BOTTOM:
+                    return 9;
+                case DIR_6_LEFT:
+                    return 10;
+            }
+        } else if (index == length - 1) {
+            // ramp at end
+            switch (direction) {
+                case DIR_0_TOP:
+                    return 9;
+                case DIR_2_RIGHT:
+                    return 10;
+                case DIR_4_BOTTOM:
+                    return 7;
+                case DIR_6_LEFT:
+                    return 8;
+            }
+        } else if (index == pillar_distance) {
+            if (direction == DIR_0_TOP || direction == DIR_4_BOTTOM) {
+                return 14;
+            } else {
+                return 15;
+            }
+        } else {
+            // middle of the bridge
+            if (direction == DIR_0_TOP || direction == DIR_4_BOTTOM) {
+                return 11;
+            } else {
+                return 12;
+            }
+        }
+    } else {
+        if (index == 0) {
+            // ramp at start
+            switch (direction) {
+                case DIR_0_TOP:
+                    return 1;
+                case DIR_2_RIGHT:
+                    return 2;
+                case DIR_4_BOTTOM:
+                    return 3;
+                case DIR_6_LEFT:
+                    return 4;
+            }
+        } else if (index == length - 1) {
+            // ramp at end
+            switch (direction) {
+                case DIR_0_TOP:
+                    return 3;
+                case DIR_2_RIGHT:
+                    return 4;
+                case DIR_4_BOTTOM:
+                    return 1;
+                case DIR_6_LEFT:
+                    return 2;
+            }
+        } else {
+            // middle part
+            if (direction == DIR_0_TOP || direction == DIR_4_BOTTOM) {
+                return 5;
+            } else {
+                return 6;
+            }
+        }
+    }
     return 0;
 }
 
@@ -96,87 +198,16 @@ int map_bridge_add(int x, int y, int is_ship_bridge)
         return bridge.length;
     }
 
-    int pillar_distance = 0;
-    bridge.direction -= Data_State.map.orientation;
-    if (bridge.direction < 0) bridge.direction += 8;
-    if (is_ship_bridge) {
-        switch (bridge.length) {
-            case  9: case 10: pillar_distance = 4; break;
-            case 11: case 12: pillar_distance = 5; break;
-            case 13: case 14: pillar_distance = 6; break;
-            case 15: case 16: pillar_distance = 7; break;
-            default: pillar_distance = 8; break;
-        }
+    bridge.direction -= city_view_orientation();
+    if (bridge.direction < 0) {
+        bridge.direction += 8;
     }
 
     int grid_offset = map_grid_offset(x, y);
     for (int i = 0; i < bridge.length; i++) {
-        Data_Grid_terrain[grid_offset] |= Terrain_Road;
-        int value = 0;
-        if (is_ship_bridge) {
-            if (i == 1 || i == bridge.length - 2) {
-                // platform after ramp
-                value = 13;
-            } else if (i == 0) {
-                // ramp at start
-                switch (bridge.direction) {
-                    case 0: value = 7; break;
-                    case 2: value = 8; break;
-                    case 4: value = 9; break;
-                    case 6: value = 10; break;
-                }
-            } else if (i == bridge.length - 1) {
-                // ramp at end
-                switch (bridge.direction) {
-                    case 0: value = 9; break;
-                    case 2: value = 10; break;
-                    case 4: value = 7; break;
-                    case 6: value = 8; break;
-                }
-            } else if (i == pillar_distance) {
-                switch (bridge.direction) {
-                    case 0: value = 14; break;
-                    case 2: value = 15; break;
-                    case 4: value = 14; break;
-                    case 6: value = 15; break;
-                }
-            } else {
-                // middle of the bridge
-                switch (bridge.direction) {
-                    case 0: value = 11; break;
-                    case 2: value = 12; break;
-                    case 4: value = 11; break;
-                    case 6: value = 12; break;
-                }
-            }
-        } else {
-            if (i == 0) {
-                // ramp at start
-                switch (bridge.direction) {
-                case 0: value = 1; break;
-                case 2: value = 2; break;
-                case 4: value = 3; break;
-                case 6: value = 4; break;
-                }
-            } else if (i == bridge.length - 1) {
-                // ramp at end
-                switch (bridge.direction) {
-                case 0: value = 3; break;
-                case 2: value = 4; break;
-                case 4: value = 1; break;
-                case 6: value = 2; break;
-                }
-            } else {
-                // middle part
-                switch (bridge.direction) {
-                case 0: value = 5; break;
-                case 2: value = 6; break;
-                case 4: value = 5; break;
-                case 6: value = 6; break;
-                }
-            }
-        }
-        Data_Grid_spriteOffsets[grid_offset] = value;
+        map_terrain_add(grid_offset, TERRAIN_ROAD);
+        int value = map_bridge_get_sprite_id(i, bridge.length, bridge.direction, is_ship_bridge);
+        map_sprite_bridge_set(grid_offset, value);
         grid_offset += bridge.direction_grid_delta;
     }
 
@@ -186,24 +217,24 @@ int map_bridge_add(int x, int y, int is_ship_bridge)
     return bridge.length;
 }
 
-static int is_bridge(int grid_offset)
+int map_is_bridge(int grid_offset)
 {
-    return (Data_Grid_terrain[grid_offset] & Terrain_Water) && Data_Grid_spriteOffsets[grid_offset];
+    return map_terrain_is(grid_offset, TERRAIN_WATER) && map_sprite_bridge_at(grid_offset);
 }
 
 static int get_y_bridge_tiles(int grid_offset)
 {
     int tiles = 0;
-    if (is_bridge(grid_offset + map_grid_delta(0, -1))) {
+    if (map_is_bridge(grid_offset + map_grid_delta(0, -1))) {
         tiles++;
     }
-    if (is_bridge(grid_offset + map_grid_delta(0, -2))) {
+    if (map_is_bridge(grid_offset + map_grid_delta(0, -2))) {
         tiles++;
     }
-    if (is_bridge(grid_offset + map_grid_delta(0, 1))) {
+    if (map_is_bridge(grid_offset + map_grid_delta(0, 1))) {
         tiles++;
     }
-    if (is_bridge(grid_offset + map_grid_delta(0, 2))) {
+    if (map_is_bridge(grid_offset + map_grid_delta(0, 2))) {
         tiles++;
     }
     return tiles;
@@ -212,16 +243,16 @@ static int get_y_bridge_tiles(int grid_offset)
 static int get_x_bridge_tiles(int grid_offset)
 {
     int tiles = 0;
-    if (is_bridge(grid_offset + map_grid_delta(-1, 0))) {
+    if (map_is_bridge(grid_offset + map_grid_delta(-1, 0))) {
         tiles++;
     }
-    if (is_bridge(grid_offset + map_grid_delta(-2, 0))) {
+    if (map_is_bridge(grid_offset + map_grid_delta(-2, 0))) {
         tiles++;
     }
-    if (is_bridge(grid_offset + map_grid_delta(1, 0))) {
+    if (map_is_bridge(grid_offset + map_grid_delta(1, 0))) {
         tiles++;
     }
-    if (is_bridge(grid_offset + map_grid_delta(2, 0))) {
+    if (map_is_bridge(grid_offset + map_grid_delta(2, 0))) {
         tiles++;
     }
     return tiles;
@@ -229,8 +260,7 @@ static int get_x_bridge_tiles(int grid_offset)
 
 void map_bridge_remove(int grid_offset, int mark_deleted)
 {
-    if (!(Data_Grid_terrain[grid_offset] & Terrain_Water) ||
-            Data_Grid_spriteOffsets[grid_offset] <= 0) {
+    if (!map_is_bridge(grid_offset)) {
         return;
     }
 
@@ -239,33 +269,30 @@ void map_bridge_remove(int grid_offset, int mark_deleted)
 
     int offset_up = tiles_x > tiles_y ? map_grid_delta(1, 0) : map_grid_delta(0, 1);
     // find lower end of the bridge
-    while ((Data_Grid_terrain[grid_offset - offset_up] & Terrain_Water) &&
-            Data_Grid_spriteOffsets[grid_offset - offset_up]) {
+    while (map_is_bridge(grid_offset - offset_up)) {
         grid_offset -= offset_up;
     }
 
     if (mark_deleted) {
         map_property_mark_deleted(grid_offset);
     } else {
-        Data_Grid_spriteOffsets[grid_offset] = 0;
-        Data_Grid_terrain[grid_offset] &= ~Terrain_Road;
+        map_sprite_clear_tile(grid_offset);
+        map_terrain_remove(grid_offset, TERRAIN_ROAD);
     }
-    while ((Data_Grid_terrain[grid_offset + offset_up] & Terrain_Water) &&
-            Data_Grid_spriteOffsets[grid_offset + offset_up]) {
+    while (map_is_bridge(grid_offset + offset_up)) {
         grid_offset += offset_up;
         if (mark_deleted) {
             map_property_mark_deleted(grid_offset);
         } else {
-            Data_Grid_spriteOffsets[grid_offset] = 0;
-            Data_Grid_terrain[grid_offset] &= ~Terrain_Road;
+            map_sprite_clear_tile(grid_offset);
+            map_terrain_remove(grid_offset, TERRAIN_ROAD);
         }
     }
 }
 
 int map_bridge_count_figures(int grid_offset)
 {
-    if (!(Data_Grid_terrain[grid_offset] & Terrain_Water) ||
-        Data_Grid_spriteOffsets[grid_offset] <= 0) {
+    if (!map_is_bridge(grid_offset)) {
         return 0;
     }
     int tiles_x = get_x_bridge_tiles(grid_offset);
@@ -273,8 +300,7 @@ int map_bridge_count_figures(int grid_offset)
 
     int offset_up = tiles_x > tiles_y ? map_grid_delta(1, 0) : map_grid_delta(0, 1);
     // find lower end of the bridge
-    while ((Data_Grid_terrain[grid_offset - offset_up] & Terrain_Water) &&
-            Data_Grid_spriteOffsets[grid_offset - offset_up]) {
+    while (map_is_bridge(grid_offset - offset_up)) {
         grid_offset -= offset_up;
     }
 
@@ -283,8 +309,7 @@ int map_bridge_count_figures(int grid_offset)
         figures = 1;
     }
     map_property_clear_deleted(grid_offset);
-    while ((Data_Grid_terrain[grid_offset + offset_up] & Terrain_Water) &&
-            Data_Grid_spriteOffsets[grid_offset + offset_up]) {
+    while (map_is_bridge(grid_offset + offset_up)) {
         grid_offset += offset_up;
         map_property_clear_deleted(grid_offset);
         if (map_has_figure_at(grid_offset)) {
@@ -294,33 +319,64 @@ int map_bridge_count_figures(int grid_offset)
     return figures;
 }
 
-void map_bridge_update_after_rotate(int ccw)
+void map_bridge_update_after_rotate(int counter_clockwise)
 {
-    for (int y = 0; y < Data_State.map.height; y++) {
-        for (int x = 0; x < Data_State.map.width; x++) {
-            int grid_offset = map_grid_offset(x, y);
-            if ((Data_Grid_terrain[grid_offset] & Terrain_Water) && Data_Grid_spriteOffsets[grid_offset]) {
+    int grid_offset = map_data.start_offset;
+    for (int y = 0; y < map_data.height; y++, grid_offset += map_data.border_size) {
+        for (int x = 0; x < map_data.width; x++, grid_offset++) {
+            if (map_is_bridge(grid_offset)) {
                 int new_value;
-                switch (Data_Grid_spriteOffsets[grid_offset]) {
-                    case 1: new_value = ccw ? 2 : 4; break;
-                    case 2: new_value = ccw ? 3 : 1; break;
-                    case 3: new_value = ccw ? 4 : 2; break;
-                    case 4: new_value = ccw ? 1 : 3; break;
+                switch (map_sprite_bridge_at(grid_offset)) {
+                    case 1: new_value = counter_clockwise ? 2 : 4; break;
+                    case 2: new_value = counter_clockwise ? 3 : 1; break;
+                    case 3: new_value = counter_clockwise ? 4 : 2; break;
+                    case 4: new_value = counter_clockwise ? 1 : 3; break;
                     case 5: new_value = 6; break;
                     case 6: new_value = 5; break;
-                    case 7: new_value = ccw ? 8 : 10; break;
-                    case 8: new_value = ccw ? 9 : 7; break;
-                    case 9: new_value = ccw ? 10 : 8; break;
-                    case 10: new_value = ccw ? 7 : 9; break;
+                    case 7: new_value = counter_clockwise ? 8 : 10; break;
+                    case 8: new_value = counter_clockwise ? 9 : 7; break;
+                    case 9: new_value = counter_clockwise ? 10 : 8; break;
+                    case 10: new_value = counter_clockwise ? 7 : 9; break;
                     case 11: new_value = 12; break;
                     case 12: new_value = 11; break;
                     case 13: new_value = 13; break;
                     case 14: new_value = 15; break;
                     case 15: new_value = 14; break;
-                    default: new_value = Data_Grid_spriteOffsets[grid_offset];
+                    default: new_value = map_sprite_bridge_at(grid_offset);
                 }
-                Data_Grid_spriteOffsets[grid_offset] = new_value;
+                map_sprite_bridge_set(grid_offset, new_value);
             }
+        }
+    }
+}
+
+int map_bridge_height(int grid_offset)
+{
+    int sprite = map_sprite_bridge_at(grid_offset);
+    if (sprite <= 6) {
+        // low bridge
+        switch (sprite) {
+            case 1:
+            case 4:
+                return 10;
+            case 2:
+            case 3:
+                return 16;
+            default:
+                return 20;
+        }
+    } else {
+        // ship bridge
+        switch (sprite) {
+            case 7:
+            case 8:
+            case 9:
+            case 10:
+                return 14;
+            case 13:
+                return 30;
+            default:
+                return 36;
         }
     }
 }

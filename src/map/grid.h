@@ -5,7 +5,9 @@
 
 #include <stdint.h>
 
-#include "Data/Grid.h"
+enum {
+    GRID_SIZE = 162
+};
 
 typedef struct {
     uint8_t items[GRID_SIZE * GRID_SIZE];
@@ -19,6 +21,12 @@ typedef struct {
     uint16_t items[GRID_SIZE * GRID_SIZE];
 } grid_u16;
 
+typedef struct {
+    int16_t items[GRID_SIZE * GRID_SIZE];
+} grid_i16;
+
+void map_grid_init(int width, int height, int start_offset, int border_size);
+
 int map_grid_offset(int x, int y);
 
 int map_grid_offset_to_x(int grid_offset);
@@ -29,17 +37,34 @@ int map_grid_delta(int x, int y);
 
 int map_grid_direction_delta(int direction);
 
+void map_grid_size(int *width, int *height);
+
+int map_grid_width(void);
+
+int map_grid_height(void);
+
 void map_grid_bound(int *x, int *y);
 
 void map_grid_bound_area(int *x_min, int *y_min, int *x_max, int *y_max);
 
+void map_grid_get_area(int x, int y, int size, int radius,
+                       int *x_min, int *y_min, int *x_max, int *y_max);
+
+void map_grid_start_end_to_area(int x_start, int y_start, int x_end, int y_end,
+                                int *x_min, int *y_min, int *x_max, int *y_max);
+
 int map_grid_is_inside(int x, int y, int size);
+
+const int *map_grid_adjacent_offsets(int size);
+
 
 void map_grid_clear_u8(uint8_t *grid);
 
 void map_grid_clear_i8(int8_t *grid);
 
 void map_grid_clear_u16(uint16_t *grid);
+
+void map_grid_clear_i16(int16_t *grid);
 
 void map_grid_init_i8(int8_t *grid, int8_t value);
 

@@ -1,5 +1,6 @@
 #include "invasion.h"
 
+#include "building/destruction.h"
 #include "city/message.h"
 #include "core/calc.h"
 #include "core/random.h"
@@ -10,15 +11,12 @@
 #include "game/difficulty.h"
 #include "game/time.h"
 #include "map/grid.h"
+#include "map/terrain.h"
 #include "scenario/data.h"
 #include "scenario/map.h"
 #include "scenario/property.h"
 
 #include <string.h>
-
-#include "Data/CityInfo.h"
-#include "../Building.h"
-#include "CityInfo.h"
 
 #define MAX_INVASION_WARNINGS 101
 
@@ -31,24 +29,24 @@ static const int LOCAL_UPRISING_NUM_ENEMIES[20] = {
 };
 
 static const struct {
-    int pctType1;
-    int pctType2;
-    int pctType3;
-    int figureTypes[3];
-    int formationLayout;
+    int pct_type1;
+    int pct_type2;
+    int pct_type3;
+    int figure_types[3];
+    int formation_layout;
 } ENEMY_PROPERTIES[12] = {
-    {100, 0, 0, {49, 0, 0}, 8},
-    {40, 60, 0, {49, 51, 0}, 8},
-    {50, 50, 0, {50, 53, 0}, 8},
-    {80, 20, 0, {50, 48, 0}, 8},
-    {50, 50, 0, {49, 52, 0}, 8},
-    {30, 70, 0, {44, 43, 0}, 0},
-    {50, 50, 0, {44, 43, 0}, 10},
-    {50, 50, 0, {45, 43, 0}, 10},
-    {80, 20, 0, {45, 43, 0}, 10},
-    {80, 20, 0, {44, 46, 0}, 11},
-    {90, 10, 0, {45, 47, 0}, 11},
-    {100, 0, 0, {57, 0, 0}, 0}
+    {100, 0, 0, {FIGURE_ENEMY49_FAST_SWORD, 0, 0}, FORMATION_ENEMY_MOB}, // barbarian
+    {40, 60, 0, {FIGURE_ENEMY49_FAST_SWORD, FIGURE_ENEMY51_SPEAR, 0}, FORMATION_ENEMY_MOB}, // numidian
+    {50, 50, 0, {FIGURE_ENEMY50_SWORD, FIGURE_ENEMY53_AXE, 0}, FORMATION_ENEMY_MOB}, // gaul
+    {80, 20, 0, {FIGURE_ENEMY50_SWORD, FIGURE_ENEMY48_CHARIOT, 0}, FORMATION_ENEMY_MOB}, // celt
+    {50, 50, 0, {FIGURE_ENEMY49_FAST_SWORD, FIGURE_ENEMY52_MOUNTED_ARCHER, 0}, FORMATION_ENEMY_MOB}, // goth
+    {30, 70, 0, {FIGURE_ENEMY44_SWORD, FIGURE_ENEMY43_SPEAR, 0}, FORMATION_COLUMN}, // pergamum
+    {50, 50, 0, {FIGURE_ENEMY44_SWORD, FIGURE_ENEMY43_SPEAR, 0}, FORMATION_ENEMY_DOUBLE_LINE}, // seleucid
+    {50, 50, 0, {FIGURE_ENEMY45_SWORD, FIGURE_ENEMY43_SPEAR, 0}, FORMATION_ENEMY_DOUBLE_LINE}, // etruscan
+    {80, 20, 0, {FIGURE_ENEMY45_SWORD, FIGURE_ENEMY43_SPEAR, 0}, FORMATION_ENEMY_DOUBLE_LINE}, // greek
+    {80, 20, 0, {FIGURE_ENEMY44_SWORD, FIGURE_ENEMY46_CAMEL, 0}, FORMATION_ENEMY_WIDE_COLUMN}, // egyptian
+    {90, 10, 0, {FIGURE_ENEMY45_SWORD, FIGURE_ENEMY47_ELEPHANT, 0}, FORMATION_ENEMY_WIDE_COLUMN}, // carthaginian
+    {100, 0, 0, {FIGURE_ENEMY_CAESAR_LEGIONARY, 0, 0}, FORMATION_COLUMN} // caesar
 };
 
 typedef struct {
@@ -71,7 +69,7 @@ static struct {
     invasion_warning warnings[MAX_INVASION_WARNINGS];
 } data;
 
-void scenario_invasion_init()
+void scenario_invasion_init(void)
 {
     memset(data.warnings, 0, MAX_INVASION_WARNINGS * sizeof(invasion_warning));
     int path_current = 1;
@@ -117,7 +115,7 @@ void scenario_invasion_init()
     }
 }
 
-int scenario_invasion_exists_upcoming()
+int scenario_invasion_exists_upcoming(void)
 {
     for (int i = 0; i < MAX_INVASION_WARNINGS; i++) {
         if (data.warnings[i].in_use && data.warnings[i].handled) {
@@ -136,7 +134,7 @@ void scenario_invasion_foreach_warning(void (*callback)(int x, int y, int image_
     }
 }
 
-int scenario_invasion_count()
+int scenario_invasion_count(void)
 {
     int num_invasions = 0;
     for (int i = 0; i < MAX_INVASIONS; i++) {
@@ -185,9 +183,9 @@ static int start_invasion(int enemy_type, int amount, int invasion_point, int at
         data.last_internal_invasion_id = 1;
     }
     // calculate soldiers per type
-    int num_type1 = calc_adjust_with_percentage(amount, ENEMY_PROPERTIES[enemy_type].pctType1);
-    int num_type2 = calc_adjust_with_percentage(amount, ENEMY_PROPERTIES[enemy_type].pctType2);
-    int num_type3 = calc_adjust_with_percentage(amount, ENEMY_PROPERTIES[enemy_type].pctType3);
+    int num_type1 = calc_adjust_with_percentage(amount, ENEMY_PROPERTIES[enemy_type].pct_type1);
+    int num_type2 = calc_adjust_with_percentage(amount, ENEMY_PROPERTIES[enemy_type].pct_type2);
+    int num_type3 = calc_adjust_with_percentage(amount, ENEMY_PROPERTIES[enemy_type].pct_type3);
     num_type1 += amount - (num_type1 + num_type2 + num_type3); // assign leftovers to type1
 
     for (int t = 0; t < 3; t++) {
@@ -253,16 +251,15 @@ static int start_invasion(int enemy_type, int amount, int invasion_point, int at
     }
     // check terrain
     int grid_offset = map_grid_offset(x, y);
-    int terrain = Data_Grid_terrain[grid_offset];
-    if (terrain & (Terrain_Elevation | Terrain_Rock | Terrain_Tree)) {
+    if (map_terrain_is(grid_offset, TERRAIN_ELEVATION | TERRAIN_ROCK | TERRAIN_TREE)) {
         return -1;
     }
-    if (terrain & Terrain_Water) {
-        if (!(terrain & Terrain_Road)) { // bridge
+    if (map_terrain_is(grid_offset, TERRAIN_WATER)) {
+        if (!map_terrain_is(grid_offset, TERRAIN_ROAD)) { // bridge
             return -1;
         }
-    } else if (terrain & (Terrain_Building | Terrain_Aqueduct | Terrain_Gatehouse | Terrain_Wall)) {
-        Building_destroyByEnemy(x, y, grid_offset);
+    } else if (map_terrain_is(grid_offset, TERRAIN_BUILDING | TERRAIN_AQUEDUCT | TERRAIN_GATEHOUSE | TERRAIN_WALL)) {
+        building_destroy_by_enemy(x, y, grid_offset);
     }
     // spawn the lot!
     int seq = 0;
@@ -270,10 +267,10 @@ static int start_invasion(int enemy_type, int amount, int invasion_point, int at
         if (formations_per_type[type] <= 0) {
             continue;
         }
-        int figure_type = ENEMY_PROPERTIES[enemy_type].figureTypes[type];
+        int figure_type = ENEMY_PROPERTIES[enemy_type].figure_types[type];
         for (int i = 0; i < formations_per_type[type]; i++) {
             int formation_id = formation_create_enemy(
-                figure_type, x, y, ENEMY_PROPERTIES[enemy_type].formationLayout, orientation,
+                figure_type, x, y, ENEMY_PROPERTIES[enemy_type].formation_layout, orientation,
                 enemy_type, attack_type, invasion_id, data.last_internal_invasion_id
             );
             if (formation_id <= 0) {
@@ -281,12 +278,13 @@ static int start_invasion(int enemy_type, int amount, int invasion_point, int at
             }
             for (int fig = 0; fig < soldiers_per_formation[type][i]; fig++) {
                 figure *f = figure_create(figure_type, x, y, orientation);
-                f->isFriendly = 0;
-                f->actionState = FigureActionState_151_EnemyInitial;
-                f->waitTicks = 200 * seq + 10 * fig + 10;
-                f->formationId = formation_id;
+                f->faction_id = 0;
+                f->is_friendly = 0;
+                f->action_state = FIGURE_ACTION_151_ENEMY_INITIAL;
+                f->wait_ticks = 200 * seq + 10 * fig + 10;
+                f->formation_id = formation_id;
                 f->name = figure_name_get(figure_type, enemy_type);
-                f->isGhost = 1;
+                f->is_ghost = 1;
             }
             seq++;
         }
@@ -294,7 +292,7 @@ static int start_invasion(int enemy_type, int amount, int invasion_point, int at
     return grid_offset;
 }
 
-void scenario_invasion_process()
+void scenario_invasion_process(void)
 {
     int enemy_id = scenario.enemy_id;
     for (int i = 0; i < MAX_INVASION_WARNINGS; i++) {
@@ -373,7 +371,7 @@ void scenario_invasion_process()
     }
 }
 
-int scenario_invasion_start_from_mars()
+int scenario_invasion_start_from_mars(void)
 {
     int mission = scenario_campaign_mission();
     if (mission < 0 || mission > 19) {
@@ -390,7 +388,17 @@ int scenario_invasion_start_from_mars()
     return 1;
 }
 
-void scenario_invasion_start_from_cheat()
+int scenario_invasion_start_from_caesar(int size)
+{
+    int grid_offset = start_invasion(ENEMY_11_CAESAR, size, 0, FORMATION_ATTACK_BEST_BUILDINGS, 24);
+    if (grid_offset > 0) {
+        city_message_post(1, MESSAGE_CAESAR_ARMY_ATTACK, data.last_internal_invasion_id, grid_offset);
+        return 1;
+    }
+    return 0;
+}
+
+void scenario_invasion_start_from_cheat(void)
 {
     int enemy_id = scenario.enemy_id;
     int grid_offset = start_invasion(ENEMY_ID_TO_ENEMY_TYPE[enemy_id], 150, 8, FORMATION_ATTACK_FOOD_CHAIN, 23);
@@ -399,85 +407,6 @@ void scenario_invasion_start_from_cheat()
             city_message_post(1, MESSAGE_ENEMY_ARMY_ATTACK, data.last_internal_invasion_id, grid_offset);
         } else {
             city_message_post(1, MESSAGE_BARBARIAN_ATTACK, data.last_internal_invasion_id, grid_offset);
-        }
-    }
-}
-
-static void caesar_invasion_pause()
-{
-    formation_caesar_pause();
-}
-
-static void caesar_invasion_retreat()
-{
-    formation_caesar_retreat();
-    if (!Data_CityInfo.caesarInvasionRetreatMessageShown) {
-        Data_CityInfo.caesarInvasionRetreatMessageShown = 1;
-        city_message_post(1, MESSAGE_CAESAR_ARMY_RETREAT, 0, 0);
-    }
-}
-
-void scenario_invasion_process_caesar()
-{
-    if (Data_CityInfo.numImperialSoldiersInCity) {
-        // caesar invasion in progress
-        Data_CityInfo.caesarInvasionDurationDayCountdown--;
-        if (Data_CityInfo.ratingFavor >= 35 && Data_CityInfo.caesarInvasionDurationDayCountdown < 176) {
-            caesar_invasion_retreat();
-        } else if (Data_CityInfo.ratingFavor >= 22) {
-            if (Data_CityInfo.caesarInvasionDurationDayCountdown > 0) {
-                caesar_invasion_pause();
-            } else if (Data_CityInfo.caesarInvasionDurationDayCountdown == 0) {
-                city_message_post(1, MESSAGE_CAESAR_ARMY_CONTINUE, 0, 0); // a year has passed (11 months), siege goes on
-            }
-        }
-    } else if (Data_CityInfo.caesarInvasionSoldiersDied && Data_CityInfo.caesarInvasionSoldiersDied >= Data_CityInfo.caesarInvasionSize) {
-        // player defeated caesar army
-        Data_CityInfo.caesarInvasionSize = 0;
-        Data_CityInfo.caesarInvasionSoldiersDied = 0;
-        if (Data_CityInfo.ratingFavor < 35) {
-            CityInfo_Ratings_changeFavor(10);
-            if (Data_CityInfo.caesarInvasionCount < 2) {
-                city_message_post(1, MESSAGE_CAESAR_RESPECT_1, 0, 0);
-            } else if (Data_CityInfo.caesarInvasionCount < 3) {
-                city_message_post(1, MESSAGE_CAESAR_RESPECT_2, 0, 0);
-            } else {
-                city_message_post(1, MESSAGE_CAESAR_RESPECT_3, 0, 0);
-            }
-        }
-    } else if (Data_CityInfo.caesarInvasionDaysUntilInvasion <= 0) {
-        if (Data_CityInfo.ratingFavor <= 10) {
-            // warn player that caesar is angry and will invade in a year
-            Data_CityInfo.caesarInvasionWarningsGiven++;
-            Data_CityInfo.caesarInvasionDaysUntilInvasion = 192;
-            if (Data_CityInfo.caesarInvasionWarningsGiven <= 1) {
-                city_message_post(1, MESSAGE_CAESAR_WRATH, 0, 0);
-            }
-        }
-    } else {
-        Data_CityInfo.caesarInvasionDaysUntilInvasion--;
-        if (Data_CityInfo.caesarInvasionDaysUntilInvasion == 0) {
-            // invade!
-            int size;
-            if (Data_CityInfo.caesarInvasionCount == 0) {
-                size = 32;
-            } else if (Data_CityInfo.caesarInvasionCount == 1) {
-                size = 64;
-            } else if (Data_CityInfo.caesarInvasionCount == 2) {
-                size = 96;
-            } else {
-                size = 144;
-            }
-            int invasion_id = start_invasion(
-                ENEMY_11_CAESAR, size, 0, FORMATION_ATTACK_BEST_BUILDINGS, 24);
-            if (invasion_id > 0) {
-                Data_CityInfo.caesarInvasionCount++;
-                Data_CityInfo.caesarInvasionDurationDayCountdown = 192;
-                Data_CityInfo.caesarInvasionRetreatMessageShown = 0;
-                city_message_post(1, MESSAGE_CAESAR_ARMY_ATTACK, data.last_internal_invasion_id, invasion_id);
-                Data_CityInfo.caesarInvasionSize = size;
-                Data_CityInfo.caesarInvasionSoldiersDied = 0;
-            }
         }
     }
 }

@@ -1,14 +1,19 @@
 #include "phrase.h"
 
-#include "building/type.h"
+#include "building/building.h"
+#include "building/market.h"
+#include "city/constants.h"
+#include "city/culture.h"
+#include "city/figures.h"
+#include "city/gods.h"
+#include "city/labor.h"
+#include "city/population.h"
+#include "city/resource.h"
+#include "city/sentiment.h"
 #include "core/calc.h"
 #include "figure/trader.h"
+#include "figuretype/trader.h"
 #include "sound/speech.h"
-
-#include "Data/CityInfo.h"
-#include "Data/Constants.h"
-#include "../Building.h"
-#include "FigureAction.h"
 
 #include <string.h>
 
@@ -261,8 +266,8 @@ enum {
 
 static void play_sound_file(int sound_id, int phrase_id)
 {
-    char path[SOUND_FILENAME_MAX];
     if (sound_id >= 0 && phrase_id >= 0) {
+        char path[SOUND_FILENAME_MAX];
         strcpy(path, "wavs/");
         strcat(path, FIGURE_SOUNDS[sound_id][phrase_id]);
         sound_speech_play_file(path);
@@ -275,33 +280,33 @@ int figure_phrase_play(figure *f)
         return 0;
     }
     int sound_id = FIGURE_TYPE_TO_SOUND_TYPE[f->type];
-    play_sound_file(sound_id, f->phraseId);
+    play_sound_file(sound_id, f->phrase_id);
     return sound_id;
 }
 
 static int lion_tamer_phrase(figure *f)
 {
-    if (f->actionState == FigureActionState_150_Attack) {
-        if (++f->phraseSequenceExact >= 3) {
-            f->phraseSequenceExact = 0;
+    if (f->action_state == FIGURE_ACTION_150_ATTACK) {
+        if (++f->phrase_sequence_exact >= 3) {
+            f->phrase_sequence_exact = 0;
         }
-        return 7 + f->phraseSequenceExact;
+        return 7 + f->phrase_sequence_exact;
     }
     return 0;
 }
 
 static int gladiator_phrase(figure *f)
 {
-    return f->actionState == FigureActionState_150_Attack ? 7 : 0;
+    return f->action_state == FIGURE_ACTION_150_ATTACK ? 7 : 0;
 }
 
 static int tax_collector_phrase(figure *f)
 {
-    if (f->minMaxSeen >= HOUSE_LARGE_CASA) {
+    if (f->min_max_seen >= HOUSE_LARGE_CASA) {
         return 7;
-    } else if (f->minMaxSeen >= HOUSE_SMALL_HOVEL) {
+    } else if (f->min_max_seen >= HOUSE_SMALL_HOVEL) {
         return 8;
-    } else if (f->minMaxSeen >= HOUSE_LARGE_TENT) {
+    } else if (f->min_max_seen >= HOUSE_LARGE_TENT) {
         return 9;
     } else {
         return 0;
@@ -310,8 +315,8 @@ static int tax_collector_phrase(figure *f)
 
 static int market_trader_phrase(figure *f)
 {
-    if (f->actionState == FigureActionState_126_RoamerReturning) {
-        if (Building_Market_getMaxFoodStock(f->buildingId) <= 0) {
+    if (f->action_state == FIGURE_ACTION_126_ROAMER_RETURNING) {
+        if (building_market_get_max_food_stock(building_get(f->building_id)) <= 0) {
             return 9; // run out of goods
         }
     }
@@ -320,9 +325,9 @@ static int market_trader_phrase(figure *f)
 
 static int market_buyer_phrase(figure *f)
 {
-    if (f->actionState == FigureActionState_145_MarketBuyerGoingToStorage) {
+    if (f->action_state == FIGURE_ACTION_145_MARKET_BUYER_GOING_TO_STORAGE) {
         return 7;
-    } else if (f->actionState == FigureActionState_146_MarketBuyerReturning) {
+    } else if (f->action_state == FIGURE_ACTION_146_MARKET_BUYER_RETURNING) {
         return 8;
     } else {
         return 0;
@@ -331,17 +336,17 @@ static int market_buyer_phrase(figure *f)
 
 static int cart_pusher_phrase(figure *f)
 {
-    if (f->actionState == FigureActionState_20_CartpusherInitial) {
-        if (f->minMaxSeen == 2) {
+    if (f->action_state == FIGURE_ACTION_20_CARTPUSHER_INITIAL) {
+        if (f->min_max_seen == 2) {
             return 7;
-        } else if (f->minMaxSeen == 1) {
+        } else if (f->min_max_seen == 1) {
             return 8;
         }
-    } else if (f->actionState == FigureActionState_21_CartpusherDeliveringToWarehouse ||
-            f->actionState == FigureActionState_22_CartpusherDeliveringToGranary ||
-            f->actionState == FigureActionState_23_CartpusherDeliveringToWorkshop) {
+    } else if (f->action_state == FIGURE_ACTION_21_CARTPUSHER_DELIVERING_TO_WAREHOUSE ||
+            f->action_state == FIGURE_ACTION_22_CARTPUSHER_DELIVERING_TO_GRANARY ||
+            f->action_state == FIGURE_ACTION_23_CARTPUSHER_DELIVERING_TO_WORKSHOP) {
         if (calc_maximum_distance(
-            f->destinationX, f->destinationY, f->sourceX, f->sourceY) >= 25) {
+            f->destination_x, f->destination_y, f->source_x, f->source_y) >= 25) {
             return 9; // too far
         }
     }
@@ -350,9 +355,9 @@ static int cart_pusher_phrase(figure *f)
 
 static int warehouseman_phrase(figure *f)
 {
-    if (f->actionState == FigureActionState_51_WarehousemanDeliveringResource) {
+    if (f->action_state == FIGURE_ACTION_51_WAREHOUSEMAN_DELIVERING_RESOURCE) {
         if (calc_maximum_distance(
-            f->destinationX, f->destinationY, f->sourceX, f->sourceY) >= 25) {
+            f->destination_x, f->destination_y, f->source_x, f->source_y) >= 25) {
             return 9; // too far
         }
     }
@@ -361,18 +366,18 @@ static int warehouseman_phrase(figure *f)
 
 static int prefect_phrase(figure *f)
 {
-    if (++f->phraseSequenceExact >= 4) {
-        f->phraseSequenceExact = 0;
+    if (++f->phrase_sequence_exact >= 4) {
+        f->phrase_sequence_exact = 0;
     }
-    if (f->actionState == FigureActionState_74_PrefectGoingToFire) {
+    if (f->action_state == FIGURE_ACTION_74_PREFECT_GOING_TO_FIRE) {
         return 10;
-    } else if (f->actionState == FigureActionState_75_PrefectAtFire) {
-        return 11 + (f->phraseSequenceExact % 2);
-    } else if (f->actionState == FigureActionState_150_Attack) {
-        return 13 + f->phraseSequenceExact;
-    } else if (f->minMaxSeen >= 50) {
+    } else if (f->action_state == FIGURE_ACTION_75_PREFECT_AT_FIRE) {
+        return 11 + (f->phrase_sequence_exact % 2);
+    } else if (f->action_state == FIGURE_ACTION_150_ATTACK) {
+        return 13 + f->phrase_sequence_exact;
+    } else if (f->min_max_seen >= 50) {
         return 7;
-    } else if (f->minMaxSeen >= 10) {
+    } else if (f->min_max_seen >= 10) {
         return 8;
     } else {
         return 9;
@@ -381,9 +386,9 @@ static int prefect_phrase(figure *f)
 
 static int engineer_phrase(figure *f)
 {
-    if (f->minMaxSeen >= 60) {
+    if (f->min_max_seen >= 60) {
         return 7;
-    } else if (f->minMaxSeen >= 10) {
+    } else if (f->min_max_seen >= 10) {
         return 8;
     } else {
         return 0;
@@ -392,30 +397,30 @@ static int engineer_phrase(figure *f)
 
 static int citizen_phrase(figure *f)
 {
-    if (++f->phraseSequenceExact >= 3) {
-        f->phraseSequenceExact = 0;
+    if (++f->phrase_sequence_exact >= 3) {
+        f->phrase_sequence_exact = 0;
     }
-    return 7 + f->phraseSequenceExact;
+    return 7 + f->phrase_sequence_exact;
 }
 
 static int house_seeker_phrase(figure *f)
 {
-    if (++f->phraseSequenceExact >= 2) {
-        f->phraseSequenceExact = 0;
+    if (++f->phrase_sequence_exact >= 2) {
+        f->phrase_sequence_exact = 0;
     }
-    return 7 + f->phraseSequenceExact;
+    return 7 + f->phrase_sequence_exact;
 }
 
-static int emigrant_phrase(figure *f)
+static int emigrant_phrase(void)
 {
-    switch (Data_CityInfo.populationEmigrationCause) {
-        case EmigrationCause_NoJobs:
+    switch (city_sentiment_low_mood_cause()) {
+        case LOW_MOOD_CAUSE_NO_JOBS:
             return 7;
-        case EmigrationCause_NoFood:
+        case LOW_MOOD_CAUSE_NO_FOOD:
             return 8;
-        case EmigrationCause_HighTaxes:
+        case LOW_MOOD_CAUSE_HIGH_TAXES:
             return 9;
-        case EmigrationCause_LowWages:
+        case LOW_MOOD_CAUSE_LOW_WAGES:
             return 10;
         default:
             return 11;
@@ -424,27 +429,29 @@ static int emigrant_phrase(figure *f)
 
 static int tower_sentry_phrase(figure *f)
 {
-    if (++f->phraseSequenceExact >= 2) {
-        f->phraseSequenceExact = 0;
+    if (++f->phrase_sequence_exact >= 2) {
+        f->phrase_sequence_exact = 0;
     }
-    if (!Data_CityInfo.numEnemiesInCity) {
-        return 7 + f->phraseSequenceExact;
-    } else if (Data_CityInfo.numEnemiesInCity <= 10) {
+    int enemies = city_figures_enemies();
+    if (!enemies) {
+        return 7 + f->phrase_sequence_exact;
+    } else if (enemies <= 10) {
         return 9;
-    } else if (Data_CityInfo.numEnemiesInCity <= 30) {
+    } else if (enemies <= 30) {
         return 10;
     } else {
         return 11;
     }
 }
 
-static int soldier_phrase(figure *f)
+static int soldier_phrase(void)
 {
-    if (Data_CityInfo.numEnemiesInCity >= 40) {
+    int enemies = city_figures_enemies();
+    if (enemies >= 40) {
         return 11;
-    } else if (Data_CityInfo.numEnemiesInCity > 20) {
+    } else if (enemies > 20) {
         return 10;
-    } else if (Data_CityInfo.numEnemiesInCity) {
+    } else if (enemies) {
         return 9;
     }
     return 0;
@@ -452,10 +459,10 @@ static int soldier_phrase(figure *f)
 
 static int docker_phrase(figure *f)
 {
-    if (f->actionState == FigureActionState_135_DockerImportGoingToWarehouse ||
-        f->actionState == FigureActionState_136_DockerExportGoingToWarehouse) {
+    if (f->action_state == FIGURE_ACTION_135_DOCKER_IMPORT_GOING_TO_WAREHOUSE ||
+        f->action_state == FIGURE_ACTION_136_DOCKER_EXPORT_GOING_TO_WAREHOUSE) {
         if (calc_maximum_distance(
-            f->destinationX, f->destinationY, f->sourceX, f->sourceY) >= 25) {
+            f->destination_x, f->destination_y, f->source_x, f->source_y) >= 25) {
             return 9; // too far
         }
     }
@@ -464,36 +471,36 @@ static int docker_phrase(figure *f)
 
 static int trade_caravan_phrase(figure *f)
 {
-    if (++f->phraseSequenceExact >= 2) {
-        f->phraseSequenceExact = 0;
+    if (++f->phrase_sequence_exact >= 2) {
+        f->phrase_sequence_exact = 0;
     }
-    if (f->actionState == FigureActionState_103_TradeCaravanLeaving) {
-        if (!trader_has_traded(f->traderId)) {
+    if (f->action_state == FIGURE_ACTION_103_TRADE_CARAVAN_LEAVING) {
+        if (!trader_has_traded(f->trader_id)) {
             return 7; // no trade
         }
-    } else if (f->actionState == FigureActionState_102_TradeCaravanTrading) {
-        if (FigureAction_TradeCaravan_canBuy(f->id, f->destinationBuildingId, f->empireCityId)) {
+    } else if (f->action_state == FIGURE_ACTION_102_TRADE_CARAVAN_TRADING) {
+        if (figure_trade_caravan_can_buy(f, f->destination_building_id, f->empire_city_id)) {
             return 11; // buying goods
-        } else if (FigureAction_TradeCaravan_canSell(f->id, f->destinationBuildingId, f->empireCityId)) {
+        } else if (figure_trade_caravan_can_sell(f, f->destination_building_id, f->empire_city_id)) {
             return 10; // selling goods
         }
     }
-    return 8 + f->phraseSequenceExact;
+    return 8 + f->phrase_sequence_exact;
 }
 
 static int trade_ship_phrase(figure *f)
 {
-    if (f->actionState == FigureActionState_115_TradeShipLeaving) {
-        if (!trader_has_traded(f->traderId)) {
+    if (f->action_state == FIGURE_ACTION_115_TRADE_SHIP_LEAVING) {
+        if (!trader_has_traded(f->trader_id)) {
             return 9; // no trade
         } else {
             return 11; // good trade
         }
-    } else if (f->actionState == FigureActionState_112_TradeShipMoored) {
-        int state = FigureAction_TradeShip_isBuyingOrSelling(f->id);
-        if (state == TradeShipState_Buying) {
+    } else if (f->action_state == FIGURE_ACTION_112_TRADE_SHIP_MOORED) {
+        int state = figure_trade_ship_is_trading(f);
+        if (state == TRADE_SHIP_BUYING) {
             return 8; // buying goods
-        } else if (state == TradeShipState_Selling) {
+        } else if (state == TRADE_SHIP_SELLING) {
             return 7; // selling goods
         } else {
             return 9; // no trade
@@ -512,7 +519,6 @@ static int phrase_based_on_figure_state(figure *f)
             return gladiator_phrase(f);
         case FIGURE_TAX_COLLECTOR:
             return tax_collector_phrase(f);
-            break;
         case FIGURE_MARKET_TRADER:
             return market_trader_phrase(f);
         case FIGURE_MARKET_BUYER:
@@ -535,13 +541,13 @@ static int phrase_based_on_figure_state(figure *f)
         case FIGURE_IMMIGRANT:
             return house_seeker_phrase(f);
         case FIGURE_EMIGRANT:
-            return emigrant_phrase(f);
+            return emigrant_phrase();
         case FIGURE_TOWER_SENTRY:
             return tower_sentry_phrase(f);
         case FIGURE_FORT_JAVELIN:
         case FIGURE_FORT_MOUNTED:
         case FIGURE_FORT_LEGIONARY:
-            return soldier_phrase(f);
+            return soldier_phrase();
         case FIGURE_DOCKER:
             return docker_phrase(f);
         case FIGURE_TRADE_CARAVAN:
@@ -552,12 +558,13 @@ static int phrase_based_on_figure_state(figure *f)
     return 0;
 }
 
-static int city_god_state()
+static int city_god_state(void)
 {
     int least_god_happiness = 100;
-    for (int i = 0; i < 5; i++) {
-        if (Data_CityInfo.godHappiness[i] < least_god_happiness) {
-            least_god_happiness = Data_CityInfo.godHappiness[i];
+    for (int i = 0; i < MAX_GODS; i++) {
+        int happiness = city_god_happiness(i);
+        if (happiness < least_god_happiness) {
+            least_god_happiness = happiness;
         }
     }
     if (least_god_happiness < 20) {
@@ -571,35 +578,36 @@ static int city_god_state()
 
 static int phrase_based_on_city_state(figure *f)
 {
-    f->phraseSequenceCity = 0;
+    f->phrase_sequence_city = 0;
     int god_state = city_god_state();
+    int unemployment_pct = city_labor_unemployment_percentage();
 
-    if (Data_CityInfo.foodInfoFoodSupplyMonths <= 0) {
+    if (city_resource_food_supply_months() <= 0) {
         return 0;
-    } else if (Data_CityInfo.unemploymentPercentage >= 17) {
+    } else if (unemployment_pct >= 17) {
         return 1;
-    } else if (Data_CityInfo.workersNeeded >= 10) {
+    } else if (city_labor_workers_needed() >= 10) {
         return 2;
-    } else if (Data_CityInfo.citywideAverageEntertainment == 0) {
+    } else if (city_culture_average_entertainment() == 0) {
         return 3;
     } else if (god_state == GOD_STATE_VERY_ANGRY) {
         return 4;
-    } else if (Data_CityInfo.citywideAverageEntertainment <= 10) {
+    } else if (city_culture_average_entertainment() <= 10) {
         return 3;
     } else if (god_state == GOD_STATE_ANGRY) {
         return 4;
-    } else if (Data_CityInfo.citywideAverageEntertainment <= 20) {
+    } else if (city_culture_average_entertainment() <= 20) {
         return 3;
-    } else if (Data_CityInfo.foodInfoFoodSupplyMonths >= 4 &&
-            Data_CityInfo.unemploymentPercentage <= 5 &&
-            Data_CityInfo.citywideAverageHealth > 0 &&
-            Data_CityInfo.citywideAverageEducation > 0) {
-        if (Data_CityInfo.population < 500) {
+    } else if (city_resource_food_supply_months() >= 4 &&
+            unemployment_pct <= 5 &&
+            city_culture_average_health() > 0 &&
+            city_culture_average_education() > 0) {
+        if (city_population() < 500) {
             return 5;
         } else {
             return 6;
         }
-    } else if (Data_CityInfo.unemploymentPercentage >= 10) {
+    } else if (unemployment_pct >= 10) {
         return 1;
     } else {
         return 5;
@@ -611,17 +619,17 @@ void figure_phrase_determine(figure *f)
     if (f->id <= 0) {
         return;
     }
-    f->phraseId = 0;
+    f->phrase_id = 0;
 
-    if (FigureIsEnemy(f->type) || f->type == FIGURE_INDIGENOUS_NATIVE || f->type == FIGURE_NATIVE_TRADER) {
-        f->phraseId = -1;
+    if (figure_is_enemy(f) || f->type == FIGURE_INDIGENOUS_NATIVE || f->type == FIGURE_NATIVE_TRADER) {
+        f->phrase_id = -1;
         return;
     }
 
     int phrase_id = phrase_based_on_figure_state(f);
     if (phrase_id) {
-        f->phraseId = phrase_id;
+        f->phrase_id = phrase_id;
     } else {
-        f->phraseId = phrase_based_on_city_state(f);
+        f->phrase_id = phrase_based_on_city_state(f);
     }
 }

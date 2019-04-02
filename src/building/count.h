@@ -11,28 +11,9 @@
  */
 
 /**
- * Clears all building counters
+ * Updates the building counts and does some extra work on the side
  */
-void building_count_clear();
-
-/**
- * Increases count for the specified building
- * @param type Building type
- * @param active Whether this building is operational
- */
-void building_count_increase(building_type type, int active);
-
-/**
- * Increases count for the specified industry
- * @param resource Resource type
- * @param active Whether this building is operational
- */
-void building_count_industry_increase(resource_type resource, int active);
-
-/**
- * Limit the number of active/total hippodromes to 1
- */
-void building_count_limit_hippodrome();
+void building_count_update(void);
 
 /**
  * Returns the active building count for the type
@@ -49,8 +30,8 @@ int building_count_active(building_type type);
 int building_count_total(building_type type);
 
 /**
- * Returns the active building count for the type
- * @param type Building type
+ * Returns the active building count for the resource type
+ * @param resource Resource type
  * @return Number of active buildings
  */
 int building_count_industry_active(resource_type resource);

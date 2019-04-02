@@ -53,11 +53,25 @@ typedef enum {
 } inventory_type;
 
 typedef enum {
+    WORKSHOP_NONE = 0,
     WORKSHOP_OLIVES_TO_OIL = 1,
     WORKSHOP_VINES_TO_WINE = 2,
     WORKSHOP_IRON_TO_WEAPONS = 3,
     WORKSHOP_TIMBER_TO_FURNITURE = 4,
     WORKSHOP_CLAY_TO_POTTERY = 5
 } workshop_type;
+
+typedef enum {
+    RESOURCE_IMAGE_STORAGE = 0,
+    RESOURCE_IMAGE_CART = 1,
+    RESOURCE_IMAGE_FOOD_CART = 2,
+    RESOURCE_IMAGE_ICON = 3
+} resource_image_type;
+
+int resource_image_offset(resource_type resource, resource_image_type type);
+
+int resource_is_food(resource_type resource);
+
+workshop_type resource_to_workshop_type(resource_type resource);
 
 #endif // GAME_RESOURCE_H

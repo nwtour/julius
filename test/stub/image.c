@@ -1,4 +1,4 @@
-#include "graphics/image.h"
+#include "core/image.h"
 
 static int groups[] = {
     0, 245, 254, 246, 274, 364, 444, 476, 534, 201,
@@ -33,12 +33,17 @@ static int groups[] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
 
-int image_init()
+int image_init(int with_fonts)
 {
     return 1;
 }
 
 int image_load_climate(int climate_id)
+{
+    return 1;
+}
+
+int image_load_fonts(void)
 {
     return 1;
 }
@@ -54,21 +59,6 @@ int image_group(int group)
 }
 
 const image *image_get(int id)
-{
-    return 0;
-}
-
-const image *image_get_enemy(int id)
-{
-    return 0;
-}
-
-const color_t *image_data(int id)
-{
-    return 0;
-}
-
-const color_t *image_data_enemy(int id)
 {
     return 0;
 }

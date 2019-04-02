@@ -25,7 +25,7 @@ typedef struct {
 
 void empire_object_load(buffer *buf);
 
-void empire_object_init_cities();
+void empire_object_init_cities(void);
 
 int empire_object_init_distant_battle_travel_months(int object_type);
 
@@ -35,7 +35,7 @@ void empire_object_foreach(void (*callback)(const empire_object *));
 
 const empire_object *empire_object_get_battle_icon(int path_id, int year);
 
-int empire_object_get_max_invasion_path();
+int empire_object_get_max_invasion_path(void);
 
 int empire_object_get_closest(int x, int y);
 
@@ -44,6 +44,6 @@ void empire_object_set_expanded(int object_id, int new_city_type);
 int empire_object_city_buys_resource(int object_id, int resource);
 int empire_object_city_sells_resource(int object_id, int resource);
 
-void empire_object_update_animation(int object_id, int new_animation_index);
+int empire_object_update_animation(const empire_object *obj, int image_id);
 
 #endif // EMPIRE_OBJECT_H

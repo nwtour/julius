@@ -1,5 +1,6 @@
 #include "settings.h"
 
+#include "city/constants.h"
 #include "core/buffer.h"
 #include "core/calc.h"
 #include "core/io.h"
@@ -36,12 +37,12 @@ static struct {
 } data;
 
 
-static void load_default_settings()
+static void load_default_settings(void)
 {
     data.fullscreen = 1;
     data.window_width = 800;
     data.window_height = 600;
-    
+
     data.sound_effects.enabled = 1;
     data.sound_effects.volume = 100;
     data.sound_music.enabled = 1;
@@ -50,15 +51,16 @@ static void load_default_settings()
     data.sound_speech.volume = 100;
     data.sound_city.enabled = 1;
     data.sound_city.volume = 100;
-    
+
     data.game_speed = 90;
     data.scroll_speed = 70;
-    
+
     data.difficulty = DIFFICULTY_HARD;
     data.tooltips = TOOLTIPS_FULL;
     data.warnings = 1;
     data.gods_enabled = 1;
     data.victory_video = 0;
+    data.last_advisor = ADVISOR_LABOR;
 
     setting_clear_personal_savings();
 }
@@ -74,19 +76,19 @@ static void load_settings(buffer *buf)
     buffer_skip(buf, 6);
     data.game_speed = buffer_read_i32(buf);
     data.scroll_speed = buffer_read_i32(buf);
-    buffer_skip(buf, 32); //uint8_t playerName[32];
+    buffer_skip(buf, 32); //uint8_t player_name[32];
     buffer_skip(buf, 16);
     data.last_advisor = buffer_read_i32(buf);
-    buffer_skip(buf, 4); //int saveGameMissionId;
+    buffer_skip(buf, 4); //int save_game_mission_id;
     data.tooltips = buffer_read_i32(buf);
-    buffer_skip(buf, 4); //int startingFavor;
-    buffer_skip(buf, 4); //int personalSavingsLastMission;
-    buffer_skip(buf, 4); //int currentMissionId;
-    buffer_skip(buf, 4); //int isCustomScenario;
+    buffer_skip(buf, 4); //int starting_favor;
+    buffer_skip(buf, 4); //int personal_savings_last_mission;
+    buffer_skip(buf, 4); //int current_mission_id;
+    buffer_skip(buf, 4); //int is_custom_scenario;
     data.sound_city.enabled = buffer_read_u8(buf);
     data.warnings = buffer_read_u8(buf);
     data.monthly_autosave = buffer_read_u8(buf);
-    buffer_skip(buf, 1); //unsigned char autoclearEnabled;
+    buffer_skip(buf, 1); //unsigned char autoclear_enabled;
     data.sound_effects.volume = buffer_read_i32(buf);
     data.sound_music.volume = buffer_read_i32(buf);
     data.sound_speech.volume = buffer_read_i32(buf);
@@ -94,7 +96,7 @@ static void load_settings(buffer *buf)
     buffer_skip(buf, 8); // ram
     data.window_width = buffer_read_i32(buf);
     data.window_height = buffer_read_i32(buf);
-    buffer_skip(buf, 8); //int maxConfirmedResolution;
+    buffer_skip(buf, 8); //int max_confirmed_resolution;
     for (int i = 0; i < MAX_PERSONAL_SAVINGS; i++) {
         data.personal_savings[i] = buffer_read_i32(buf);
     }
@@ -103,19 +105,19 @@ static void load_settings(buffer *buf)
     data.gods_enabled = buffer_read_i32(buf);
 }
 
-void settings_load()
+void settings_load(void)
 {
     load_default_settings();
-    
+
     int size = io_read_file_into_buffer("c3.inf", data.inf_file, INF_SIZE);
     if (!size) {
         return;
     }
-    
+
     buffer buf;
     buffer_init(&buf, data.inf_file, size);
     load_settings(&buf);
-    
+
     if (data.window_width + data.window_height < 500) {
         // most likely migration from Caesar 3
         data.window_width = 800;
@@ -123,12 +125,12 @@ void settings_load()
     }
 }
 
-void settings_save()
+void settings_save(void)
 {
     buffer b;
     buffer *buf = &b;
     buffer_init(buf, data.inf_file, INF_SIZE);
-    
+
     buffer_skip(buf, 4);
     buffer_write_i32(buf, data.fullscreen);
     buffer_skip(buf, 3);
@@ -138,19 +140,19 @@ void settings_save()
     buffer_skip(buf, 6);
     buffer_write_i32(buf, data.game_speed);
     buffer_write_i32(buf, data.scroll_speed);
-    buffer_skip(buf, 32); //uint8_t playerName[32];
+    buffer_skip(buf, 32); //uint8_t player_name[32];
     buffer_skip(buf, 16);
     buffer_write_i32(buf, data.last_advisor);
-    buffer_skip(buf, 4); //int saveGameMissionId;
+    buffer_skip(buf, 4); //int save_game_mission_id;
     buffer_write_i32(buf, data.tooltips);
-    buffer_skip(buf, 4); //int startingFavor;
-    buffer_skip(buf, 4); //int personalSavingsLastMission;
-    buffer_skip(buf, 4); //int currentMissionId;
-    buffer_skip(buf, 4); //int isCustomScenario;
+    buffer_skip(buf, 4); //int starting_favor;
+    buffer_skip(buf, 4); //int personal_savings_last_mission;
+    buffer_skip(buf, 4); //int current_mission_id;
+    buffer_skip(buf, 4); //int is_custom_scenario;
     buffer_write_u8(buf, data.sound_city.enabled);
     buffer_write_u8(buf, data.warnings);
     buffer_write_u8(buf, data.monthly_autosave);
-    buffer_skip(buf, 1); //unsigned char autoclearEnabled;
+    buffer_skip(buf, 1); //unsigned char autoclear_enabled;
     buffer_write_i32(buf, data.sound_effects.volume);
     buffer_write_i32(buf, data.sound_music.volume);
     buffer_write_i32(buf, data.sound_speech.volume);
@@ -158,7 +160,7 @@ void settings_save()
     buffer_skip(buf, 8); // ram
     buffer_write_i32(buf, data.window_width);
     buffer_write_i32(buf, data.window_height);
-    buffer_skip(buf, 8); //int maxConfirmedResolution;
+    buffer_skip(buf, 8); //int max_confirmed_resolution;
     for (int i = 0; i < MAX_PERSONAL_SAVINGS; i++) {
         buffer_write_i32(buf, data.personal_savings[i]);
     }
@@ -169,7 +171,7 @@ void settings_save()
     io_write_buffer_to_file("c3.inf", data.inf_file, INF_SIZE);
 }
 
-int setting_fullscreen()
+int setting_fullscreen(void)
 {
     return data.fullscreen;
 }
@@ -186,7 +188,7 @@ void setting_set_display(int fullscreen, int width, int height)
     if (!fullscreen) {
         data.window_width = width;
         data.window_height = height;
-	}
+    }
 }
 
 static set_sound *get_sound(set_sound_type type)
@@ -230,12 +232,12 @@ void setting_reset_sound(set_sound_type type, int enabled, int volume)
     sound->volume = calc_bound(volume, 0, 100);
 }
 
-int setting_game_speed()
+int setting_game_speed(void)
 {
     return data.game_speed;
 }
 
-void setting_increase_game_speed()
+void setting_increase_game_speed(void)
 {
     if (data.game_speed >= 100) {
         if (data.game_speed < 500) {
@@ -246,7 +248,7 @@ void setting_increase_game_speed()
     }
 }
 
-void setting_decrease_game_speed()
+void setting_decrease_game_speed(void)
 {
     if (data.game_speed > 100) {
         data.game_speed -= 100;
@@ -255,17 +257,17 @@ void setting_decrease_game_speed()
     }
 }
 
-int setting_scroll_speed()
+int setting_scroll_speed(void)
 {
     return data.scroll_speed;
 }
 
-void setting_increase_scroll_speed()
+void setting_increase_scroll_speed(void)
 {
     data.scroll_speed = calc_bound(data.scroll_speed + 10, 0, 100);
 }
 
-void setting_decrease_scroll_speed()
+void setting_decrease_scroll_speed(void)
 {
     data.scroll_speed = calc_bound(data.scroll_speed - 10, 0, 100);
 }
@@ -276,12 +278,12 @@ void setting_reset_speeds(int game_speed, int scroll_speed)
     data.scroll_speed = scroll_speed;
 }
 
-set_tooltips setting_tooltips()
+set_tooltips setting_tooltips(void)
 {
     return data.tooltips;
 }
 
-void setting_cycle_tooltips()
+void setting_cycle_tooltips(void)
 {
     switch (data.tooltips) {
     case TOOLTIPS_NONE: data.tooltips = TOOLTIPS_SOME; break;
@@ -290,42 +292,42 @@ void setting_cycle_tooltips()
     }
 }
 
-int setting_warnings()
+int setting_warnings(void)
 {
     return data.warnings;
 }
 
-void setting_toggle_warnings()
+void setting_toggle_warnings(void)
 {
     data.warnings = data.warnings ? 0 : 1;
 }
 
-int setting_monthly_autosave()
+int setting_monthly_autosave(void)
 {
     return data.monthly_autosave;
 }
 
-void setting_toggle_monthly_autosave()
+void setting_toggle_monthly_autosave(void)
 {
     data.monthly_autosave = data.monthly_autosave ? 0 : 1;
 }
 
-int setting_gods_enabled()
+int setting_gods_enabled(void)
 {
     return data.gods_enabled;
 }
 
-void setting_toggle_gods_enabled()
+void setting_toggle_gods_enabled(void)
 {
     data.gods_enabled = data.gods_enabled ? 0 : 1;
 }
 
-set_difficulty setting_difficulty()
+set_difficulty setting_difficulty(void)
 {
     return data.difficulty;
 }
 
-void setting_increase_difficulty()
+void setting_increase_difficulty(void)
 {
     if (data.difficulty >= DIFFICULTY_VERY_HARD) {
         data.difficulty = DIFFICULTY_VERY_HARD;
@@ -334,7 +336,7 @@ void setting_increase_difficulty()
     }
 }
 
-void setting_decrease_difficulty()
+void setting_decrease_difficulty(void)
 {
     if (data.difficulty <= DIFFICULTY_VERY_EASY) {
         data.difficulty = DIFFICULTY_VERY_EASY;
@@ -343,13 +345,13 @@ void setting_decrease_difficulty()
     }
 }
 
-int setting_victory_video()
+int setting_victory_video(void)
 {
     data.victory_video = data.victory_video ? 0 : 1;
     return data.victory_video;
 }
 
-int setting_last_advisor()
+int setting_last_advisor(void)
 {
     return data.last_advisor;
 }
@@ -369,7 +371,7 @@ void setting_set_personal_savings_for_mission(int mission_id, int savings)
     data.personal_savings[mission_id] = savings;
 }
 
-void setting_clear_personal_savings()
+void setting_clear_personal_savings(void)
 {
     for (int i = 0; i < MAX_PERSONAL_SAVINGS; i++) {
         data.personal_savings[i] = 0;
