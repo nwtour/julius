@@ -346,7 +346,7 @@ int game_file_delete_saved_game(const char *filename)
     return game_file_io_delete_saved_game(filename);
 }
 
-void game_file_write_mission_saved_game(void)
+const char *game_file_mission_save_name(void)
 {
     int rank = scenario_campaign_rank();
     if (rank < 0) {
@@ -354,7 +354,14 @@ void game_file_write_mission_saved_game(void)
     } else if (rank > 11) {
         rank = 11;
     }
-    if (city_mission_should_save_start() && !file_exists(MISSION_SAVED_GAMES[rank])) {
-        game_file_io_write_saved_game(MISSION_SAVED_GAMES[rank]);
+    static char filename[FILE_NAME_MAX];
+    strncpy(filename, MISSION_SAVED_GAMES[rank], FILE_NAME_MAX);
+    return filename;
+}
+
+void game_file_write_mission_saved_game(void)
+{
+    if (city_mission_should_save_start() && !file_exists(game_file_mission_save_name())) {
+        game_file_io_write_saved_game(game_file_mission_save_name());
     }
 }

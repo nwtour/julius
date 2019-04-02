@@ -62,7 +62,8 @@ static struct {
 static void init(file_dialog_type type)
 {
     if (strlen(data.last_loaded_file) == 0) {
-        strncpy(data.last_loaded_file, string_to_ascii(lang_get_string(9, 6)), FILE_NAME_MAX);
+        strncpy(data.last_loaded_file, game_file_mission_save_name(), FILE_NAME_MAX);
+        file_remove_extension(data.last_loaded_file);
     }
     data.type = type;
     data.message_not_exist_start_time = 0;

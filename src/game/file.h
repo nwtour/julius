@@ -15,4 +15,6 @@ int game_file_delete_saved_game(const char *filename);
 
 void game_file_write_mission_saved_game(void);
 
+const char *game_file_mission_save_name(void);
+
 #endif // GAME_FILE_H
